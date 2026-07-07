@@ -1,0 +1,97 @@
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+
+/**
+ * Design tokens — single source of truth for color, radius, and shadow.
+ * Colors are stored as raw HSL triplets (no hsl() wrapper, no commas) so
+ * Tailwind can compose them as `hsl(var(--token) / <alpha-value>)`.
+ * Shadows are stored as full box-shadow value strings since they mix
+ * multiple layers and rgba() colors that don't map to the HSL pattern.
+ */
+
+:root {
+  /* Backgrounds */
+  --background: 0 0% 100%;
+  --background-subtle: 240 20% 98%;
+  --background-muted: 240 10% 95%;
+
+  /* Surfaces */
+  --surface: 0 0% 100%;
+  --surface-raised: 0 0% 100%;
+
+  /* Borders */
+  --border: 240 10% 90%;
+  --border-strong: 240 10% 82%;
+
+  /* Text */
+  --text-primary: 240 10% 10%;
+  --text-secondary: 240 5% 40%;
+  --text-tertiary: 240 5% 60%;
+  --text-disabled: 240 5% 75%;
+
+  /* Accent */
+  --accent: 262 83% 58%;
+  --accent-hover: 262 83% 52%;
+  --accent-subtle: 262 83% 96%;
+  --accent-foreground: 0 0% 100%;
+
+  /* Semantic */
+  --success: 152 60% 40%;
+  --success-subtle: 152 60% 95%;
+  --warning: 38 92% 50%;
+  --warning-subtle: 38 92% 95%;
+  --danger: 0 72% 51%;
+  --danger-subtle: 0 72% 96%;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  /* Shadows (full box-shadow value strings) */
+  --shadow-xs: 0 1px 2px rgba(16, 16, 24, 0.04);
+  --shadow-sm: 0 2px 6px rgba(16, 16, 24, 0.06), 0 1px 2px rgba(16, 16, 24, 0.04);
+  --shadow-md: 0 8px 24px rgba(16, 16, 24, 0.08), 0 2px 6px rgba(16, 16, 24, 0.04);
+  --shadow-lg: 0 16px 48px rgba(16, 16, 24, 0.12), 0 4px 12px rgba(16, 16, 24, 0.06);
+  --shadow-glow-accent: 0 0 0 1px rgba(124, 58, 237, 0.15), 0 8px 24px rgba(124, 58, 237, 0.2);
+}
+
+.dark {
+  /* Backgrounds */
+  --background: 240 15% 7%;
+  --background-subtle: 240 12% 10%;
+  --background-muted: 240 10% 14%;
+
+  /* Surfaces */
+  --surface: 240 12% 11%;
+  --surface-raised: 240 12% 13%;
+
+  /* Borders */
+  --border: 240 10% 20%;
+  --border-strong: 240 10% 28%;
+
+  /* Text */
+  --text-primary: 0 0% 96%;
+  --text-secondary: 240 5% 68%;
+  --text-tertiary: 240 5% 48%;
+  --text-disabled: 240 5% 32%;
+
+  /* Accent */
+  --accent: 262 90% 68%;
+  --accent-hover: 262 90% 74%;
+  --accent-subtle: 262 50% 18%;
+  --accent-foreground: 0 0% 100%;
+
+  /* Semantic */
+  --success: 152 55% 52%;
+  --success-subtle: 152 40% 14%;
+  --warning: 38 92% 58%;
+  --warning-subtle: 38 60% 14%;
+  --danger: 0 78% 63%;
+  --danger-subtle: 0 50% 16%;
+
+  /* Shadows stay the same box-shadow definitions in dark mode; the dark
+     surfaces already provide contrast. Override here if a future design
+     pass wants deeper/lighter shadows specifically for dark surfaces. */
+}
