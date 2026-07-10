@@ -2,7 +2,7 @@ import { NotFoundError } from '../../core/errors/AppError';
 import { logger } from '../../config/logger';
 import { BrandModel, BrandDocument } from '../brands/brand.model';
 import { ProjectModel, ProjectDocument } from '../projects/project.model';
-import { getTextProvider } from '../../providers/text/TextProviderFactory';
+import { getTextProvider, createTextProvider } from '../../providers/text/TextProviderFactory';
 import { RegenerableField } from '../../providers/text/TextProvider.interface';
 import { GenerateImageOptions } from '../../providers/image/ImageProvider.interface';
 import { imageGenerationQueue } from '../../jobs/queue';
@@ -42,10 +42,12 @@ async function getOwnedProjectWithBrand(
  * calling API request does not 500 — the accompanying text content is still valid and already
  * persisted, so we surface the failed image status instead of throwing.
  */
+type RunImageOptions = GenerateImageOptions & { imageProvider?: string };
+
 async function runImageGeneration(
   generationId: string,
   prompt: string,
-  options?: GenerateImageOptions
+  options?: RunImageOptions
 ): Promise<ImageJobResult> {
   if (imageGenerationQueue) {
     const job = await imageGenerationQueue.add('generate-image', { generationId, prompt, options });
@@ -64,14 +66,19 @@ async function runImageGeneration(
   return { jobId: generationId, status: fresh?.status ?? 'failed', mode: 'sync' };
 }
 
-export async function generateFull(projectId: string, userId: string): Promise<GenerateFullResult> {
+export async function generateFull(
+  projectId: string,
+  userId: string,
+  options?: { textProvider?: string; imageProvider?: string; textModel?: string; imageModel?: string }
+): Promise<GenerateFullResult> {
   const { project, brand } = await getOwnedProjectWithBrand(projectId, userId);
-
-  const textProvider = getTextProvider();
-  const output = await textProvider.generateFullContent({
+  const textProvider = options?.textProvider ? createTextProvider(options.textProvider) : getTextProvider();
+  const textInput = {
     topic: project.topic,
     brand: { name: brand.name, tone: brand.tone, audience: brand.audience },
-  });
+    model: options?.textModel ?? (brand as any)?.defaultTextModel ?? undefined,
+  };
+  const output = await textProvider.generateFullContent(textInput);
 
   const generation = await generationRepository.create({
     project: projectId,
@@ -98,7 +105,15 @@ export async function generateFull(projectId: string, userId: string): Promise<G
     }
   ).exec();
 
-  const imageJob = await runImageGeneration(generation._id.toString(), output.imagePrompt);
+  // If an imageProvider override was supplied, create a provider instance
+  // to be used by the image generation flow. We pass the override through
+  // the job data (or synchronous call) by setting IMAGE_PROVIDER in the
+  // queued job data via the options object handled by processImageGenerationJob.
+  // Simpler: attach the override as part of the options passed to runImageGeneration.
+  const imageJob = await runImageGeneration(generation._id.toString(), output.imagePrompt, {
+    imageProvider: options?.imageProvider,
+    model: options?.imageModel ?? (brand as any)?.defaultImageModel ?? undefined,
+  });
 
   return { generation, imageJob };
 }
@@ -110,7 +125,8 @@ export type RegenerateFieldResult =
 export async function regenerateField(
   projectId: string,
   userId: string,
-  field: RegenerableField | 'image'
+  field: RegenerableField | 'image',
+  options?: { textProvider?: string; imageProvider?: string; textModel?: string; imageModel?: string }
 ): Promise<RegenerateFieldResult> {
   const { project, brand } = await getOwnedProjectWithBrand(projectId, userId);
 
@@ -124,6 +140,8 @@ export async function regenerateField(
       throw new NotFoundError('Project has no image prompt yet — generate full content first');
     }
 
+    const imageProvider = options?.imageProvider ?? brand.defaultImageProvider;
+
     const generation = await generationRepository.create({
       project: projectId,
       user: userId,
@@ -131,10 +149,14 @@ export async function regenerateField(
       type: 'image',
       inputTopic: project.topic,
       inputPromptOverride: prompt,
+      imageProvider: imageProvider || undefined,
       status: 'pending',
     });
 
-    const imageJob = await runImageGeneration(generation._id.toString(), prompt);
+    const imageJob = await runImageGeneration(generation._id.toString(), prompt, {
+      imageProvider: options?.imageProvider,
+      model: options?.imageModel ?? (brand as any)?.defaultImageModel ?? undefined,
+    });
 
     if (imageJob.status === 'completed') {
       const fresh = await generationRepository.findByIdRaw(generation._id.toString());
@@ -150,10 +172,11 @@ export async function regenerateField(
     return { field: 'image', imageJob, generation: finalGeneration };
   }
 
-  const textProvider = getTextProvider();
+  const textProvider = options?.textProvider ? createTextProvider(options.textProvider) : (brand.defaultTextProvider ? createTextProvider(brand.defaultTextProvider) : getTextProvider());
   const result = await textProvider.regenerateField(field, {
     topic: project.topic,
     brand: { name: brand.name, tone: brand.tone, audience: brand.audience },
+    model: options?.textModel ?? (brand as any)?.defaultTextModel ?? undefined,
     previousOutput: project.content,
   });
 

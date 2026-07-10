@@ -7,13 +7,26 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(4000),
-  CLIENT_URL: z.string().default('http://localhost:5173'),
-  SERVER_URL: z.string().optional(),
+  // Must be a concrete origin — it's the sole allowed CORS origin with
+  // credentials:true, so a wildcard or malformed value would either break
+  // credentialed requests or (if reflected) allow cross-origin credentialed
+  // reads. Reject '*' explicitly.
+  CLIENT_URL: z
+    .string()
+    .url('CLIENT_URL must be a valid URL')
+    .refine((v) => v !== '*', 'CLIENT_URL cannot be "*" when credentials are enabled')
+    .default('http://localhost:5173'),
+  SERVER_URL: z.string().url().optional(),
 
   MONGO_URI: z.string().min(1, 'MONGO_URI is required'),
 
   JWT_ACCESS_SECRET: z.string().min(1, 'JWT_ACCESS_SECRET is required'),
   JWT_REFRESH_SECRET: z.string().min(1, 'JWT_REFRESH_SECRET is required'),
+
+  // Optional: encrypts secrets at rest (per-brand Instagram access tokens).
+  // If unset, tokens are stored as plaintext (a warning is logged) so local/
+  // demo setups keep working. Set a long random string in production.
+  TOKEN_ENCRYPTION_KEY: z.string().optional(),
 
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
@@ -37,8 +50,15 @@ const envSchema = z.object({
   // Gemini has a genuinely free tier, unlike OpenAI — set TEXT_PROVIDER=gemini to use it.
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_TEXT_MODEL: z.string().default('gemini-2.5-flash'),
+  GEMINI_IMAGE_MODEL: z.string().optional(),
 
   IMAGE_PROVIDER: z.string().default('pollinations'),
+  POLLINATIONS_BASE_URL: z.string().default('https://gen.pollinations.ai/image'),
+  POLLINATIONS_FALLBACK_URL: z.string().optional(),
+  POLLINATIONS_API_KEY: z.string().optional(),
+
+  CLOUDFLARE_WORKERS_AI_BASE_URL: z.string().url().optional(),
+  CLOUDFLARE_WORKERS_AI_API_KEY: z.string().optional(),
 
   // --- Instagram publishing (Meta Graph API) ---
   // Publisher selection: 'graph' calls the real Meta Graph API; 'mock'
@@ -69,6 +89,7 @@ export const config = {
     ),
     openaiEnabled: Boolean(env.OPENAI_API_KEY),
     geminiEnabled: Boolean(env.GEMINI_API_KEY),
+    cloudflareWorkersEnabled: Boolean(env.CLOUDFLARE_WORKERS_AI_BASE_URL && env.CLOUDFLARE_WORKERS_AI_API_KEY),
   },
 };
 

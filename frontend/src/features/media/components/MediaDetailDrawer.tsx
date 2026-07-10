@@ -26,15 +26,17 @@ import { useToggleFavorite } from '../hooks/useToggleFavorite';
 import { useUpdateAsset } from '../hooks/useUpdateAsset';
 import { useDeleteAsset } from '../hooks/useDeleteAsset';
 import { useCollections } from '../hooks/useCollections';
+import { useMediaAsset } from '../hooks/useMediaAsset';
 import { useAddAssetToCollection, useRemoveAssetFromCollection } from '../hooks/useAssetCollections';
 import type { MediaAsset } from '../schemas/media.types';
 
 interface MediaDetailDrawerProps {
+  /** The asset selected from the grid — used as identity + initial render data. */
   asset: MediaAsset | null;
   onOpenChange: (open: boolean) => void;
 }
 
-export function MediaDetailDrawer({ asset, onOpenChange }: MediaDetailDrawerProps): React.JSX.Element {
+export function MediaDetailDrawer({ asset: selectedAsset, onOpenChange }: MediaDetailDrawerProps): React.JSX.Element {
   const [tagInput, setTagInput] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -45,11 +47,19 @@ export function MediaDetailDrawer({ asset, onOpenChange }: MediaDetailDrawerProp
   const addToCollection = useAddAssetToCollection();
   const removeFromCollection = useRemoveAssetFromCollection();
 
+  // Render from the LIVE detail-cache entry (seeded by the selected asset), not
+  // the captured prop, so favorite/tag/collection mutations — which all
+  // setQueryData(mediaKeys.detail(id)) — reflect instantly instead of only
+  // after reopening the drawer.
+  const { data: asset } = useMediaAsset(selectedAsset?._id, selectedAsset ?? undefined);
+
   useEffect(() => {
     setTagInput('');
-  }, [asset?._id]);
+  }, [selectedAsset?._id]);
 
-  if (!asset) {
+  // Openness tracks the SELECTION (prop), not the cached asset — the detail
+  // cache entry lingers after close, so gating on `asset` would keep it open.
+  if (!selectedAsset || !asset) {
     return (
       <Sheet open={false} onOpenChange={onOpenChange}>
         <SheetContent />

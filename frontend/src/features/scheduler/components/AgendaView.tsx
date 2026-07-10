@@ -21,10 +21,9 @@ function dayLabel(date: Date): string {
  * scheduled posts grouped by day. Swaps in for CalendarView because a 7-col
  * month grid is too cramped to be usable on small screens — see
  * SchedulerPage's useMediaQuery('(min-width: 1024px)') breakpoint check.
- * Posts remain draggable (DraggablePost) for parity with desktop, though drag
- * targets here are limited to within-list reordering context — a day-group
- * itself isn't a drop target in this simplified list layout; reschedule via
- * the quick-view popover on mobile is the primary interaction.
+ * Posts are click-only here (draggable={false}): this list has no DndContext
+ * or drop targets, so drag would lift a card that can never drop. Reschedule
+ * is done via the quick-view popover.
  */
 export function AgendaView({ projects, isLoading }: AgendaViewProps): React.JSX.Element {
   const groups = useMemo(() => {
@@ -72,7 +71,7 @@ export function AgendaView({ projects, isLoading }: AgendaViewProps): React.JSX.
           </h3>
           <div className="flex flex-col gap-2">
             {group.projects.map((project) => (
-              <DraggablePost key={project._id} project={project} compact={false} />
+              <DraggablePost key={project._id} project={project} compact={false} draggable={false} />
             ))}
           </div>
         </div>

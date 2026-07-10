@@ -14,5 +14,12 @@ export function useCalendar(query: CalendarQuery) {
     queryKey: schedulerKeys.calendar(query),
     queryFn: () => getCalendar(query),
     placeholderData: (previousData) => previousData,
+    // Scheduled posts publish (or fail) entirely server-side via the 60s
+    // publish engine, with no push channel to the client. Without refetching,
+    // an open calendar shows a published post as "Scheduled" forever. Poll on
+    // the same cadence as the engine and refresh when the user returns to the
+    // tab so status transitions become visible.
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
 }

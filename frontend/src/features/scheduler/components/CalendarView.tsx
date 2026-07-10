@@ -22,6 +22,7 @@ import {
   subMonths,
 } from 'date-fns';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DayCell, projectsOnDay } from './DayCell';
@@ -96,6 +97,14 @@ export function CalendarView({
       setMinutes(setHours(targetDate, existing.getHours()), existing.getMinutes()),
       0
     );
+
+    // Dropping onto a past day (keeping the post's original time-of-day) can
+    // land in the past, which the publish engine would fire immediately. Reject
+    // the drag with feedback instead of silently publishing.
+    if (combined.getTime() <= Date.now()) {
+      toast.error('Cannot schedule a post in the past. Pick a future day.');
+      return;
+    }
 
     reschedule.mutate({ projectId: project._id, scheduledAt: combined.toISOString() });
   };

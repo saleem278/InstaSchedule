@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import type { UseFormSetError } from 'react-hook-form';
 import * as authApi from '../api/auth.api';
 import { AUTH_ME_QUERY_KEY } from './useCurrentUser';
+import { useActiveBrandStore } from '@/features/brands/store/activeBrandStore';
 import type { LoginFormValues, RegisterFormValues } from '../schemas/auth.schema';
 
 function extractErrorMessage(error: unknown): string {
@@ -19,16 +20,20 @@ function extractErrorMessage(error: unknown): string {
 }
 
 /**
- * If the server error message looks like it's about the email field
- * (e.g. "email already exists"), report it via react-hook-form's setError
- * so it renders inline under the email input instead of only as a toast.
+ * Pin a server error under the email field ONLY when it's specifically about
+ * the email (e.g. "account with this email already exists"). A generic
+ * credential failure like "Invalid email or password" also contains the word
+ * "email" but is NOT an email-field problem — pinning it there wrongly implies
+ * the email is wrong when the password may be. Those fall through to a
+ * form-level toast instead.
  */
 function maybeSetInlineEmailError(
   message: string,
   setError?: UseFormSetError<LoginFormValues | RegisterFormValues>
 ): boolean {
   if (!setError) return false;
-  if (/email/i.test(message)) {
+  const isEmailSpecific = /already (exists|registered)|email is (invalid|already)|valid email/i.test(message);
+  if (isEmailSpecific) {
     setError('email', { type: 'server', message });
     return true;
   }
@@ -66,16 +71,20 @@ export function useAuth() {
     },
   });
 
+  // Logout should always leave the client logged out, even if the network
+  // call fails (backend logout is now idempotent and unauthenticated, so this
+  // is belt-and-suspenders). Tear down session state in a shared helper run
+  // from both onSuccess and onError.
+  const teardownSession = useCallback(() => {
+    queryClient.setQueryData(AUTH_ME_QUERY_KEY, null);
+    useActiveBrandStore.getState().setActiveBrandId(null);
+    navigate('/login');
+  }, [queryClient, navigate]);
+
   const logoutMutation = useMutation({
     mutationFn: authApi.logout,
-    onSuccess: async () => {
-      queryClient.setQueryData(AUTH_ME_QUERY_KEY, null);
-      await queryClient.invalidateQueries({ queryKey: AUTH_ME_QUERY_KEY });
-      navigate('/login');
-    },
-    onError: (error) => {
-      toast.error(extractErrorMessage(error));
-    },
+    onSuccess: teardownSession,
+    onError: teardownSession,
   });
 
   const login = useCallback(

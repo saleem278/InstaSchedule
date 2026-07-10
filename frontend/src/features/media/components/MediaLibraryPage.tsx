@@ -86,6 +86,13 @@ export function MediaLibraryPage(): React.JSX.Element {
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const hasActiveFilters = filter !== 'all' || Boolean(search.trim()) || collectionId !== ALL_COLLECTIONS_VALUE;
+  // The source filter (ai-generated/uploaded) is applied client-side to the
+  // current page only, while pagination counts come from the server (which
+  // doesn't know about the source filter). When it actually hides some of the
+  // fetched page, surface a note so "Page 1 of N showing 2 items" isn't
+  // confusing.
+  const sourceFilterActive = filter === 'ai-generated' || filter === 'uploaded';
+  const sourceFilterHidSome = sourceFilterActive && data ? assets.length < data.items.length : false;
 
   const toggleSelect = (assetId: string): void => {
     setSelectedIds((prev) => {
@@ -275,6 +282,14 @@ export function MediaLibraryPage(): React.JSX.Element {
         onUploadClick={() => setUploadOpen(true)}
         hasActiveFilters={hasActiveFilters}
       />
+
+      {!isLoading && !isError && sourceFilterHidSome && (
+        <p className="text-center text-xs text-textTertiary">
+          Showing {assets.length} {filter === 'ai-generated' ? 'AI-generated' : 'uploaded'} item
+          {assets.length === 1 ? '' : 's'} on this page. The {filter === 'ai-generated' ? 'AI-generated' : 'uploaded'}{' '}
+          filter applies per page — use Next/Previous to see more.
+        </p>
+      )}
 
       {!isLoading && !isError && total > PAGE_SIZE && (
         <div className="flex items-center justify-center gap-3">

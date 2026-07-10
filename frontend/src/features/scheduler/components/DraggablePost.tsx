@@ -14,14 +14,23 @@ import type { Project } from '@/features/projects/schemas/project.types';
 interface DraggablePostProps {
   project: Project;
   compact?: boolean;
+  /**
+   * Whether the thumbnail is actually drag-enabled. Defaults to true (the
+   * desktop CalendarView wraps posts in a DndContext with DayCell drop
+   * targets). AgendaView passes false: it has NO DndContext or drop targets,
+   * so wiring drag listeners there produces a card that lifts under the finger
+   * but can never drop — a broken-feeling dead interaction. Disabled → the
+   * card is click-only (quick-view → reschedule popover).
+   */
+  draggable?: boolean;
 }
 
 /**
- * A single draggable post thumbnail. Click opens a quick-view popover
- * (Edit / Reschedule / Delete); drag (via @dnd-kit useDraggable) lets the
- * user drop it on a different DayCell to reschedule it.
+ * A single post thumbnail. Click opens a quick-view popover (Edit / Reschedule
+ * / Delete). When `draggable`, drag (via @dnd-kit useDraggable) lets the user
+ * drop it on a different DayCell to reschedule.
  */
-export function DraggablePost({ project, compact }: DraggablePostProps): React.JSX.Element {
+export function DraggablePost({ project, compact, draggable = true }: DraggablePostProps): React.JSX.Element {
   const [quickViewOpen, setQuickViewOpen] = useState(false);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -29,14 +38,19 @@ export function DraggablePost({ project, compact }: DraggablePostProps): React.J
   const reschedule = useRescheduleProject();
   const deleteProject = useDeleteScheduledProject();
 
+  // Hook must run unconditionally, but we only apply its wiring when draggable.
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: project._id,
     data: { project },
   });
 
-  const style = transform
-    ? { transform: CSS.Translate.toString(transform), zIndex: isDragging ? 50 : undefined }
-    : undefined;
+  const dragProps = draggable
+    ? { isDragging, ...attributes, ...listeners }
+    : {};
+  const style =
+    draggable && transform
+      ? { transform: CSS.Translate.toString(transform), zIndex: isDragging ? 50 : undefined }
+      : undefined;
 
   const currentDate = project.schedule.scheduledAt ? new Date(project.schedule.scheduledAt) : new Date();
 
@@ -45,14 +59,12 @@ export function DraggablePost({ project, compact }: DraggablePostProps): React.J
       <Popover open={quickViewOpen} onOpenChange={setQuickViewOpen}>
         <PopoverTrigger asChild>
           <PostThumbnail
-            ref={setNodeRef}
+            ref={draggable ? setNodeRef : undefined}
             style={style}
             project={project}
             compact={compact}
-            isDragging={isDragging}
-            {...attributes}
-            {...listeners}
             onClick={() => setQuickViewOpen(true)}
+            {...dragProps}
           />
         </PopoverTrigger>
         <PopoverContent align="start" className="w-80">

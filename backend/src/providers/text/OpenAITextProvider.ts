@@ -101,8 +101,9 @@ export class OpenAITextProvider implements TextProvider {
 
     try {
       const client = this.getClient();
+      const model = input.model ?? config.OPENAI_TEXT_MODEL;
       const completion = await client.chat.completions.create({
-        model: config.OPENAI_TEXT_MODEL,
+        model,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
@@ -136,8 +137,9 @@ export class OpenAITextProvider implements TextProvider {
         userMessageParts.push(`Previous content (for context, avoid repeating verbatim): ${JSON.stringify(input.previousOutput)}`);
       }
 
+      const model = input.model ?? config.OPENAI_TEXT_MODEL;
       const completion = await client.chat.completions.create({
-        model: config.OPENAI_TEXT_MODEL,
+        model,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: buildRegenerateSystemPrompt(field) },

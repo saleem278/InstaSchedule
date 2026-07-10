@@ -10,6 +10,11 @@ export interface ListFilters {
   search?: string;
 }
 
+/** Escapes regex metacharacters so user input matches as a literal substring. */
+function escapeRegex(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export interface ListResult {
   items: MediaAssetDocument[];
   total: number;
@@ -49,7 +54,11 @@ export async function list(userId: string, filters: ListFilters, page: number, l
     // one text query per compound query, which is more restrictive than a simple
     // partial/substring "search-as-you-type" experience over tags. A regex scan
     // is fine at this collection's expected scale (per-user media libraries).
-    query.tags = { $regex: filters.search, $options: 'i' };
+    //
+    // Escape the user input so it's treated as a LITERAL substring — passing it
+    // raw as a regex source lets a user submit a catastrophic-backtracking
+    // pattern (e.g. `(a+)+$`) that pins a DB core (ReDoS). Cap length too.
+    query.tags = { $regex: escapeRegex(filters.search.slice(0, 100)), $options: 'i' };
   }
 
   const skip = (page - 1) * limit;

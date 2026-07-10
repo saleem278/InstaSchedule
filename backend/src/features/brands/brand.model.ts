@@ -15,6 +15,12 @@ export interface BrandDocument extends Document {
   instagramUserId?: string;
   /** Long-lived Page access token authorized for content_publish on the linked IG account. */
   instagramAccessToken?: string;
+  /** Optional per-brand default providers */
+  defaultTextProvider?: string;
+  defaultImageProvider?: string;
+  /** Optional per-brand default model identifiers for text and image providers */
+  defaultTextModel?: string;
+  defaultImageModel?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,6 +41,10 @@ const brandSchema = new Schema<BrandDocument>(
     // read-path projection in brand.repository never returns it to the client
     // (see findAllByUser/findByIdForUser select exclusions).
     instagramAccessToken: { type: String, select: false },
+      defaultTextProvider: { type: String },
+      defaultImageProvider: { type: String },
+      defaultTextModel: { type: String },
+      defaultImageModel: { type: String },
   },
   { timestamps: true }
 );

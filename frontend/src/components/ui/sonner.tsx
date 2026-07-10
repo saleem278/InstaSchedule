@@ -7,6 +7,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       className="toaster group"
       toastOptions={{
+        closeButton: true,
         classNames: {
           toast:
             'group toast group-[.toaster]:bg-surfaceRaised group-[.toaster]:text-textPrimary group-[.toaster]:border-border group-[.toaster]:shadow-lg',

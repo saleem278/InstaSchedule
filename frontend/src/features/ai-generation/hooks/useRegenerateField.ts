@@ -1,12 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { regenerateField } from '../api/generation.api';
+import { regenerateField, type GenerationOptions } from '../api/generation.api';
 import { projectKeys } from '@/features/projects/hooks/projectKeys';
 import type { RegenerableField } from '../schemas/generation.types';
 
 interface RegenerateFieldVariables {
   projectId: string;
   field: RegenerableField | 'image';
+  options?: GenerationOptions;
 }
 
 /**
@@ -20,7 +21,7 @@ export function useRegenerateField() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ projectId, field }: RegenerateFieldVariables) => regenerateField(projectId, field),
+    mutationFn: ({ projectId, field, options }: RegenerateFieldVariables) => regenerateField(projectId, field, options),
     onSuccess: async (_data, variables) => {
       await queryClient.invalidateQueries({ queryKey: projectKeys.detail(variables.projectId) });
     },

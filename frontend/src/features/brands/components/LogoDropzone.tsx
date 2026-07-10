@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { ImagePlus, Loader2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -10,6 +10,12 @@ interface LogoDropzoneProps {
   value?: string;
   fallbackLabel: string;
   onChange: (url: string) => void;
+  /**
+   * Render as a plain, non-interactive preview (no drop target, no file
+   * picker). Used on the wizard's Review step, where an editable dropzone
+   * whose changes are discarded would let the user "upload" into a black hole.
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -17,26 +23,48 @@ interface LogoDropzoneProps {
  * circular preview, uploads immediately via the shared media endpoint and
  * reports the resulting hosted URL back to the form.
  */
-export function LogoDropzone({ value, fallbackLabel, onChange }: LogoDropzoneProps): React.JSX.Element {
+export function LogoDropzone({ value, fallbackLabel, onChange, readOnly = false }: LogoDropzoneProps): React.JSX.Element {
   const [isUploading, setIsUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | undefined>(value);
+  // Track the last object URL we created so we can revoke it (avoiding a
+  // memory leak) once it's replaced or the component unmounts.
+  const objectUrlRef = useRef<string | null>(null);
+
+  useEffect(
+    () => () => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    },
+    []
+  );
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
       const file = acceptedFiles[0];
       if (!file) return;
 
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
       const localPreview = URL.createObjectURL(file);
+      objectUrlRef.current = localPreview;
       setPreviewUrl(localPreview);
       setIsUploading(true);
 
       uploadBrandLogo(file)
         .then((url) => {
           onChange(url);
+          // The hosted URL is now the source of truth; drop the local blob.
+          setPreviewUrl(url);
+          if (objectUrlRef.current) {
+            URL.revokeObjectURL(objectUrlRef.current);
+            objectUrlRef.current = null;
+          }
         })
         .catch(() => {
           toast.error('Logo upload failed. Please try again.');
           setPreviewUrl(value);
+          if (objectUrlRef.current) {
+            URL.revokeObjectURL(objectUrlRef.current);
+            objectUrlRef.current = null;
+          }
         })
         .finally(() => {
           setIsUploading(false);
@@ -50,7 +78,20 @@ export function LogoDropzone({ value, fallbackLabel, onChange }: LogoDropzonePro
     accept: { 'image/*': [] },
     maxFiles: 1,
     multiple: false,
+    disabled: readOnly,
   });
+
+  // Read-only: a plain circular avatar, no drop handlers or hidden input.
+  if (readOnly) {
+    return (
+      <div className="flex h-24 w-24 items-center justify-center rounded-full border border-border bg-backgroundMuted">
+        <Avatar className="h-full w-full">
+          <AvatarImage src={previewUrl} alt="Brand logo" />
+          <AvatarFallback className="bg-transparent text-xl">{fallbackLabel}</AvatarFallback>
+        </Avatar>
+      </div>
+    );
+  }
 
   return (
     <div

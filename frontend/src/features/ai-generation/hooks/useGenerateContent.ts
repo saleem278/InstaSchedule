@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import { generateFull } from '../api/generation.api';
+import { generateFull, type GenerationOptions } from '../api/generation.api';
 
 /**
  * Fires POST /generation/:projectId/generate. Resolves with text content
@@ -9,6 +9,7 @@ import { generateFull } from '../api/generation.api';
  */
 export function useGenerateContent() {
   return useMutation({
-    mutationFn: (projectId: string) => generateFull(projectId),
+    mutationFn: (payload: { projectId: string; options?: GenerationOptions }) =>
+      generateFull(payload.projectId, payload.options),
   });
 }

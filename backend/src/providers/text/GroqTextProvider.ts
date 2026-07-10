@@ -49,7 +49,15 @@ no markdown fences, no commentary, matching exactly this shape:
 
 function stripMarkdownFences(content: string): string {
   const fenced = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  return fenced?.[1] ?? content;
+  const unfenced = fenced?.[1] ?? content;
+  // Fallback for prose-wrapped JSON without a fence (e.g. "Sure! { ... }"):
+  // slice from the first { to the last } so JSON.parse sees just the object.
+  const first = unfenced.indexOf('{');
+  const last = unfenced.lastIndexOf('}');
+  if (first !== -1 && last > first) {
+    return unfenced.slice(first, last + 1);
+  }
+  return unfenced;
 }
 
 function parseJsonContent(content: string | null | undefined, context: string): Record<string, unknown> {
@@ -127,8 +135,13 @@ export class GroqTextProvider implements TextProvider {
 
     try {
       const client = this.getClient();
+      const model = input.model ?? config.GROQ_TEXT_MODEL;
       const completion = await client.chat.completions.create({
-        model: config.GROQ_TEXT_MODEL,
+        model,
+        // Constrain to JSON like the OpenAI provider does — the prompt asks for
+        // strict JSON, but without this the model routinely wraps it in prose/
+        // fences and JSON.parse fails. Groq's OpenAI-compatible API supports it.
+        response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: buildUserMessage(input) },
@@ -161,8 +174,10 @@ export class GroqTextProvider implements TextProvider {
         userMessageParts.push(`Previous content (for context, avoid repeating verbatim): ${JSON.stringify(input.previousOutput)}`);
       }
 
+      const model = input.model ?? config.GROQ_TEXT_MODEL;
       const completion = await client.chat.completions.create({
-        model: config.GROQ_TEXT_MODEL,
+        model,
+        response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: buildRegenerateSystemPrompt(field) },
           { role: 'user', content: userMessageParts.join('\n\n') },

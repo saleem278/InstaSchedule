@@ -7,7 +7,9 @@ import type { Project } from '@/features/projects/schemas/project.types';
 const STATUS_STRIPE: Record<Project['status'], string> = {
   draft: 'border-l-textTertiary',
   scheduled: 'border-l-accent',
+  publishing: 'border-l-warning',
   published: 'border-l-success',
+  failed: 'border-l-danger',
 };
 
 interface PostThumbnailProps extends React.HTMLAttributes<HTMLButtonElement> {

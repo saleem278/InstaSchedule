@@ -50,7 +50,15 @@ no markdown fences, no commentary, matching exactly this shape:
 
 function stripMarkdownFences(content: string): string {
   const fenced = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  return fenced?.[1] ?? content;
+  const unfenced = fenced?.[1] ?? content;
+  // Fallback for prose-wrapped JSON without a fence: slice from the first { to
+  // the last } so JSON.parse sees just the object.
+  const first = unfenced.indexOf('{');
+  const last = unfenced.lastIndexOf('}');
+  if (first !== -1 && last > first) {
+    return unfenced.slice(first, last + 1);
+  }
+  return unfenced;
 }
 
 function parseJsonContent(content: string | null | undefined, context: string): Record<string, unknown> {
@@ -136,8 +144,9 @@ export class GeminiTextProvider implements TextProvider {
 
     try {
       const client = this.getClient();
+      const model = input.model ?? config.GEMINI_TEXT_MODEL;
       const response = await client.models.generateContent({
-        model: config.GEMINI_TEXT_MODEL,
+        model,
         contents: `${SYSTEM_PROMPT}\n\n${buildUserMessage(input)}`,
         config: {
           responseMimeType: 'application/json',
@@ -182,8 +191,9 @@ export class GeminiTextProvider implements TextProvider {
         userMessageParts.push(`Previous content (for context, avoid repeating verbatim): ${JSON.stringify(input.previousOutput)}`);
       }
 
+      const model = input.model ?? config.GEMINI_TEXT_MODEL;
       const response = await client.models.generateContent({
-        model: config.GEMINI_TEXT_MODEL,
+        model,
         contents: `${buildRegenerateSystemPrompt(field)}\n\n${userMessageParts.join('\n\n')}`,
         config: {
           responseMimeType: 'application/json',

@@ -87,11 +87,20 @@ export const instagramConnectionSchema = z.object({
   instagramAccessToken: z.string().optional().or(z.literal('')),
 });
 
+// ---- AI provider defaults (optional per-brand) ----
+export const providerDefaultsSchema = z.object({
+  defaultTextProvider: z.string().optional().or(z.literal('')),
+  defaultImageProvider: z.string().optional().or(z.literal('')),
+  defaultTextModel: z.string().optional().or(z.literal('')),
+  defaultImageModel: z.string().optional().or(z.literal('')),
+});
+
 // ---- Combined (what actually gets sent to the API) ----
 export const brandFormSchema = identityStepSchema
   .merge(visualStepSchema)
   .merge(voiceStepSchema)
-  .merge(instagramConnectionSchema);
+  .merge(instagramConnectionSchema)
+  .merge(providerDefaultsSchema);
 
 export type BrandFormValues = z.infer<typeof brandFormSchema>;
 
@@ -107,4 +116,8 @@ export const brandFormDefaultValues: BrandFormValues = {
   fontPairingId: FONT_PAIRINGS[0]!.id,
   tone: [],
   audience: '',
+  defaultTextProvider: '',
+  defaultImageProvider: '',
+  defaultTextModel: '',
+  defaultImageModel: '',
 };

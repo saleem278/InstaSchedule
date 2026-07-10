@@ -49,10 +49,25 @@ export function TextTool({ canvas, selectedTextbox, onCommit }: TextToolProps): 
     if (!canvas) return;
     const activeCanvas = canvas;
 
+    // Track the pointer-down position so we only place a textbox on a genuine
+    // CLICK, not the mouse-up of a drag (which previously spawned a stray
+    // "Your text" box + history entry on every empty-canvas drag).
+    let downPoint: { x: number; y: number } | null = null;
+    const CLICK_THRESHOLD_PX = 5;
+
+    function handleMouseDown(event: TPointerEventInfo<TPointerEvent>) {
+      downPoint = event.target ? null : { x: event.scenePoint.x, y: event.scenePoint.y };
+    }
+
     function handleCanvasClick(event: TPointerEventInfo<TPointerEvent>) {
-      if (event.target) return; // clicked an existing object — let selection handle it, don't stack new textboxes
+      if (event.target) return; // clicked an existing object — let selection handle it
+      const start = downPoint;
+      downPoint = null;
+      if (!start) return;
 
       const point = event.scenePoint;
+      const moved = Math.hypot(point.x - start.x, point.y - start.y);
+      if (moved > CLICK_THRESHOLD_PX) return; // it was a drag, not a click
 
       const textbox = new Textbox('Your text', {
         left: point.x,
@@ -70,8 +85,10 @@ export function TextTool({ canvas, selectedTextbox, onCommit }: TextToolProps): 
       onCommit();
     }
 
+    activeCanvas.on('mouse:down', handleMouseDown);
     activeCanvas.on('mouse:up', handleCanvasClick);
     return () => {
+      activeCanvas.off('mouse:down', handleMouseDown);
       activeCanvas.off('mouse:up', handleCanvasClick);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

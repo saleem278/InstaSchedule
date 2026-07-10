@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, ChevronsUpDown, Plus } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -32,6 +32,18 @@ export function BrandSwitcher(): React.JSX.Element {
   const setActiveBrandId = useActiveBrandStore((state) => state.setActiveBrandId);
 
   const activeBrand = brands?.find((brand) => brand._id === activeBrandId) ?? null;
+
+  // Reconcile a stale persisted activeBrandId (localStorage) against the real
+  // list: if it points at a brand the user no longer has (deleted elsewhere,
+  // or a different account after login), re-point it at the first available
+  // brand (or null when there are none) so downstream brand-scoped queries
+  // don't hit a dangling id. Only runs once the list has actually loaded.
+  useEffect(() => {
+    if (!brands) return;
+    if (activeBrandId && !brands.some((brand) => brand._id === activeBrandId)) {
+      setActiveBrandId(brands[0]?._id ?? null);
+    }
+  }, [brands, activeBrandId, setActiveBrandId]);
 
   if (isLoading) {
     return <Skeleton className="h-10 w-full rounded-md" />;

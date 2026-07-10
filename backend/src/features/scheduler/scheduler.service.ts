@@ -33,6 +33,14 @@ export async function updateSchedule(
   }
 
   const date = new Date(scheduledAt);
+  // Guard against scheduling in the past: the publish engine's due-query is
+  // `scheduledAt <= now`, so a past time would publish on the very next tick
+  // (≤60s) — never what a user rescheduling on a calendar intends. Allow a
+  // small grace window for clock skew between client and server.
+  const CLOCK_SKEW_GRACE_MS = 60_000;
+  if (date.getTime() < Date.now() - CLOCK_SKEW_GRACE_MS) {
+    throw new ValidationError('Scheduled time must be in the future.');
+  }
   const updated = await schedulerRepository.setSchedule(projectId, userId, date);
   if (!updated) {
     throw new NotFoundError('Project not found');

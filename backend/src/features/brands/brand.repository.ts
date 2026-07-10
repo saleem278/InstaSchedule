@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { BrandModel, BrandDocument } from './brand.model';
 import { CreateBrandInput, UpdateBrandInput } from './brand.validation';
+import { encryptSecret, decryptSecret } from '../../core/utils/secretCrypto';
 
 // These reads include the token (via +select) ONLY so the service can derive a
 // correct `instagramConnected` boolean from BOTH the userId and token being
@@ -26,17 +27,26 @@ export async function findByIdForUser(id: string, userId: string): Promise<Brand
  * Like findByIdForUser but explicitly includes the `instagramAccessToken`
  * field (which is `select: false` on the schema, so the default reads never
  * return it to the client). Used only by the publishing path, which needs the
- * token to authenticate the Graph API call.
+ * token to authenticate the Graph API call. Decrypts the token at rest so the
+ * caller receives the usable plaintext (legacy plaintext values pass through).
  */
 export async function findByIdWithToken(id: string, userId: string): Promise<BrandDocument | null> {
-  return BrandModel.findOne({ _id: id, user: userId })
+  const brand = await BrandModel.findOne({ _id: id, user: userId })
     .select('+instagramAccessToken')
     .lean<BrandDocument>()
     .exec();
+  if (brand?.instagramAccessToken) {
+    brand.instagramAccessToken = decryptSecret(brand.instagramAccessToken) ?? undefined;
+  }
+  return brand;
 }
 
 export async function create(userId: string, data: CreateBrandInput): Promise<BrandDocument> {
-  const brand = await BrandModel.create({ ...data, user: userId });
+  const payload = { ...data, user: userId };
+  if (payload.instagramAccessToken) {
+    payload.instagramAccessToken = encryptSecret(payload.instagramAccessToken);
+  }
+  const brand = await BrandModel.create(payload);
   return brand.toObject();
 }
 
@@ -51,6 +61,9 @@ export async function update(id: string, userId: string, data: UpdateBrandInput)
   for (const [key, value] of Object.entries(data)) {
     if ((igFields as readonly string[]).includes(key) && value === '') {
       unset[key] = '';
+    } else if (key === 'instagramAccessToken' && typeof value === 'string' && value !== '') {
+      // Encrypt the token at rest before it's written.
+      set[key] = encryptSecret(value);
     } else {
       set[key] = value;
     }

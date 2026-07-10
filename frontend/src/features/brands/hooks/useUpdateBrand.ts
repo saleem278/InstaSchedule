@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { extractErrorMessage } from '@/core/api/extractErrorMessage';
 import { updateBrand } from '../api/brand.api';
 import { brandKeys } from './brandKeys';
 import type { BrandPayload } from '../schemas/brand.types';
@@ -19,8 +20,8 @@ export function useUpdateBrand() {
       await queryClient.invalidateQueries({ queryKey: brandKeys.detail(variables.brandId) });
       toast.success('Brand updated');
     },
-    onError: () => {
-      toast.error('Could not update brand. Please try again.');
+    onError: (error) => {
+      toast.error(extractErrorMessage(error, 'Could not update brand. Please try again.'));
     },
   });
 }

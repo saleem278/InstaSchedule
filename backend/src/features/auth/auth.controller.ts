@@ -3,7 +3,7 @@ import { asyncHandler } from '../../core/middleware/asyncHandler';
 import { sendSuccess } from '../../core/utils/apiResponse';
 import { UnauthorizedError } from '../../core/errors/AppError';
 import { config } from '../../config/env';
-import { setAuthCookies, clearAuthCookies } from './token.utils';
+import { setAuthCookies, clearAuthCookies, verifyAccessToken, verifyRefreshToken } from './token.utils';
 import * as authService from './auth.service';
 import * as authRepository from './auth.repository';
 import { UserDocument } from '../users/user.model';
@@ -40,15 +40,48 @@ export const refresh = asyncHandler(async (req: Request, res: Response) => {
   }
   const tokens = await authService.refresh(refreshToken);
   setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
-  sendSuccess(res, { success: true });
+  sendSuccess(res, null);
 });
 
+/**
+ * Idempotent logout. Not behind `authenticate` (see auth.routes.ts): it must
+ * succeed even with an expired/missing access token. We best-effort revoke the
+ * stored refresh-token hash by decoding whichever token cookie is present, then
+ * always clear the cookies regardless of outcome.
+ */
 export const logout = asyncHandler(async (req: Request, res: Response) => {
-  const userId = req.user!.id;
-  await authService.logout(userId);
+  const accessToken = req.cookies?.accessToken as string | undefined;
+  const refreshToken = req.cookies?.refreshToken as string | undefined;
+
+  const userId = resolveUserIdFromTokens(accessToken, refreshToken);
+  if (userId) {
+    // Don't let a DB hiccup block cookie clearing — logout should always leave
+    // the client logged out client-side.
+    await authService.logout(userId).catch(() => undefined);
+  }
+
   clearAuthCookies(res);
-  sendSuccess(res, { success: true });
+  sendSuccess(res, null);
 });
+
+/** Decodes the user id from the access token, falling back to the refresh token. Returns null if neither verifies. */
+function resolveUserIdFromTokens(accessToken?: string, refreshToken?: string): string | null {
+  if (accessToken) {
+    try {
+      return verifyAccessToken(accessToken).sub;
+    } catch {
+      // fall through to refresh token
+    }
+  }
+  if (refreshToken) {
+    try {
+      return verifyRefreshToken(refreshToken).sub;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 
 export const me = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.id;

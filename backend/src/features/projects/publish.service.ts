@@ -72,7 +72,9 @@ async function performPublish(projectId: string, userId: string): Promise<Publis
       try {
         buffer = await fs.readFile(localPath);
       } catch (error) {
-        throw new ValidationError('Local uploaded image file not found for publish.', { imageUrl, localPath });
+        // Don't leak the absolute server path in the client-facing error details.
+        logger.warn({ err: error, imageUrl, localPath }, 'Local uploaded image file not found for publish');
+        throw new ValidationError('Local uploaded image file not found for publish.');
       }
 
       const cloudinaryProvider = new CloudinaryStorageProvider();

@@ -4,6 +4,16 @@ import { AUTH_ENDPOINTS } from '@/core/api/endpoints';
 import { useAuthConfig } from '../hooks/useAuthConfig';
 
 /**
+ * Full-page URL into the backend's Google OAuth entry point. This is a browser
+ * navigation (not an axios call), so it must include the `/api/v1` base that
+ * apiClient normally prepends — `AUTH_ENDPOINTS.google` alone ('/auth/google')
+ * would resolve against the SPA origin and 404. In dev, VITE_API_BASE_URL is
+ * empty and Vite proxies `/api` to the backend; in prod it points at the API
+ * origin.
+ */
+const GOOGLE_OAUTH_URL = `${import.meta.env.VITE_API_BASE_URL ?? ''}/api/v1${AUTH_ENDPOINTS.google}`;
+
+/**
  * Renders "Continue with Google" only when GET /auth/config reports
  * googleEnabled:true. This is a plain anchor (full-page redirect into the
  * backend's OAuth flow), not an axios call — the browser must navigate away.
@@ -21,7 +31,7 @@ export function GoogleButton(): React.JSX.Element | null {
 
   return (
     <a
-      href={AUTH_ENDPOINTS.google}
+      href={GOOGLE_OAUTH_URL}
       className={cn(buttonVariants({ variant: 'outline', size: 'lg' }), 'w-full gap-3')}
     >
       <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">

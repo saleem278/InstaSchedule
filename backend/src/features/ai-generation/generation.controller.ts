@@ -7,7 +7,18 @@ import { RegenerateFieldParams } from './generation.validation';
 export const generateFull = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const projectId = req.params.projectId!;
-  const result = await generationService.generateFull(projectId, userId);
+  const { textProvider, imageProvider, textModel, imageModel } = req.body as {
+    textProvider?: string;
+    imageProvider?: string;
+    textModel?: string;
+    imageModel?: string;
+  };
+  const result = await generationService.generateFull(projectId, userId, {
+    textProvider,
+    imageProvider,
+    textModel,
+    imageModel,
+  });
   sendSuccess(res, result, 201);
 });
 
@@ -15,7 +26,18 @@ export const regenerateField = asyncHandler(async (req: Request, res: Response) 
   const userId = req.user!.id;
   const projectId = req.params.projectId!;
   const { field } = req.params as unknown as RegenerateFieldParams;
-  const result = await generationService.regenerateField(projectId, userId, field);
+  const { textProvider, imageProvider, textModel, imageModel } = req.body as {
+    textProvider?: string;
+    imageProvider?: string;
+    textModel?: string;
+    imageModel?: string;
+  };
+  const result = await generationService.regenerateField(projectId, userId, field, {
+    textProvider,
+    imageProvider,
+    textModel,
+    imageModel,
+  });
   sendSuccess(res, result);
 });
 

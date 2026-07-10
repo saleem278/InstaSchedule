@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { Pencil, CalendarClock, Trash2, ImageIcon } from 'lucide-react';
+import { Pencil, CalendarClock, Trash2, ImageIcon, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/core/utils/cn';
@@ -20,6 +20,10 @@ interface PostQuickViewProps {
 export function PostQuickView({ project, onRequestReschedule, onRequestDelete }: PostQuickViewProps): React.JSX.Element {
   const navigate = useNavigate();
   const scheduledAt = project.schedule.scheduledAt;
+  // A background publish that failed records why on the project; surface it so
+  // the red "Failed" badge isn't an unexplained dead end. The user reschedules
+  // to retry (the publish engine picks scheduled posts back up).
+  const publishError = project.status === 'failed' ? project.schedule.lastPublishError : null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -44,6 +48,17 @@ export function PostQuickView({ project, onRequestReschedule, onRequestDelete }:
           </div>
         </div>
       </div>
+
+      {publishError && (
+        <div className="flex items-start gap-2 rounded-md border border-danger/30 bg-dangerSubtle px-2.5 py-2">
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" />
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-danger">Publishing failed</p>
+            <p className="mt-0.5 break-words text-[11px] text-textSecondary">{publishError}</p>
+            <p className="mt-0.5 text-[11px] text-textTertiary">Reschedule to try again.</p>
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-1.5 border-t border-border pt-3">
         <Button variant="outline" size="sm" className="flex-1" onClick={() => navigate(`/projects/${project._id}`)}>

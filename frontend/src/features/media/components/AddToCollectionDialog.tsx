@@ -2,6 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCollections } from '../hooks/useCollections';
+import { useMediaAsset } from '../hooks/useMediaAsset';
 import { useAddAssetToCollection, useRemoveAssetFromCollection } from '../hooks/useAssetCollections';
 import type { MediaAsset } from '../schemas/media.types';
 
@@ -15,10 +16,13 @@ interface AddToCollectionDialogProps {
  * tile's quick action and the detail drawer. Each toggle is one API call
  * (no bulk single-asset/multi-collection endpoint exists).
  */
-export function AddToCollectionDialog({ asset, onOpenChange }: AddToCollectionDialogProps): React.JSX.Element {
+export function AddToCollectionDialog({ asset: selectedAsset, onOpenChange }: AddToCollectionDialogProps): React.JSX.Element {
   const { data: collections, isLoading } = useCollections();
   const addToCollection = useAddAssetToCollection();
   const removeFromCollection = useRemoveAssetFromCollection();
+  // Read the live cache entry (seeded by the selection) so each toggle's
+  // membership checkbox reflects the mutation immediately.
+  const { data: asset } = useMediaAsset(selectedAsset?._id, selectedAsset ?? undefined);
 
   const isMember = (collectionId: string): boolean => Boolean(asset?.collections.includes(collectionId));
 
@@ -32,7 +36,7 @@ export function AddToCollectionDialog({ asset, onOpenChange }: AddToCollectionDi
   };
 
   return (
-    <Dialog open={Boolean(asset)} onOpenChange={onOpenChange}>
+    <Dialog open={Boolean(selectedAsset)} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>Add to collection</DialogTitle>

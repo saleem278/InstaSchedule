@@ -80,6 +80,7 @@ export async function update(id: string, userId: string, data: UpdateProjectInpu
       }
     }
   }
+  // no per-project model overrides; ignore textModel/imageModel if present
   if (data.imageAssetId !== undefined) {
     update.imageAsset = data.imageAssetId;
   }

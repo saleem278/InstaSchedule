@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { endOfMonth, endOfWeek, startOfMonth, startOfWeek } from 'date-fns';
+import { addDays, endOfMonth, endOfWeek, startOfMonth, startOfWeek, subDays } from 'date-fns';
 import {
   Select,
   SelectContent,
@@ -33,8 +33,14 @@ export function SchedulerPage(): React.JSX.Element {
   const setActiveBrandId = useActiveBrandStore((state) => state.setActiveBrandId);
 
   const range = useMemo(() => {
-    const from = startOfWeek(startOfMonth(visibleMonth));
-    const to = endOfWeek(endOfMonth(visibleMonth));
+    // The grid groups posts into cells by LOCAL day, but the backend filters by
+    // a UTC [from, to] window. In negative-UTC-offset zones a post near local
+    // midnight on the first/last visible day can fall just outside the UTC
+    // window and go missing from its cell. Pad the query by a day on each side
+    // so every visible local day always has its data; DayCell already filters
+    // per-cell, so over-fetching is harmless.
+    const from = subDays(startOfWeek(startOfMonth(visibleMonth)), 1);
+    const to = addDays(endOfWeek(endOfMonth(visibleMonth)), 1);
     return { from: from.toISOString(), to: to.toISOString() };
   }, [visibleMonth]);
 

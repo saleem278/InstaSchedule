@@ -5,6 +5,8 @@ export interface CaptionGenerationInput {
     tone?: string;
     audience?: string;
   };
+  // Optional model override for the text provider (e.g. 'gemini-2.5-flash')
+  model?: string;
 }
 
 export interface CaptionGenerationOutput {

@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
-import { useDropzone } from 'react-dropzone';
+import { useDropzone, type FileRejection } from 'react-dropzone';
+import { toast } from 'sonner';
 import { UploadCloud, FileImage, X } from 'lucide-react';
 import {
   Dialog,
@@ -18,6 +19,7 @@ interface MediaUploadDropzoneProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   brandId?: string;
+  onUploaded?: (asset: any) => void;
 }
 
 interface QueuedFile {
@@ -31,17 +33,30 @@ interface QueuedFile {
  * Files upload sequentially (one POST /media/upload per file, field name
  * `file`), each showing its own progress bar via axios `onUploadProgress`.
  */
-export function MediaUploadDropzone({ open, onOpenChange, brandId }: MediaUploadDropzoneProps): React.JSX.Element {
+export function MediaUploadDropzone({ open, onOpenChange, brandId, onUploaded }: MediaUploadDropzoneProps): React.JSX.Element {
   const [queue, setQueue] = useState<QueuedFile[]>([]);
   const uploadMedia = useUploadMedia();
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
+  const onDrop = useCallback((acceptedFiles: File[], rejections: FileRejection[]) => {
     setQueue((prev) => [...prev, ...acceptedFiles.map((file) => ({ file, progress: 0, status: 'pending' as const }))]);
+    // Reject client-side (before any request) with a specific reason, so a
+    // >10MB or non-image file never reaches the server to fail generically.
+    for (const rejection of rejections) {
+      const tooLarge = rejection.errors.some((e) => e.code === 'file-too-large');
+      const wrongType = rejection.errors.some((e) => e.code === 'file-invalid-type');
+      const reason = tooLarge
+        ? 'is larger than the 10MB limit'
+        : wrongType
+          ? 'is not a supported image type'
+          : 'could not be added';
+      toast.error(`"${rejection.file.name}" ${reason}.`);
+    }
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: { 'image/*': [] },
+    maxSize: 10 * 1024 * 1024, // keep in sync with the backend multer limit
     multiple: true,
   });
 
@@ -56,17 +71,18 @@ export function MediaUploadDropzone({ open, onOpenChange, brandId }: MediaUpload
     setQueue((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const startUpload = async (): Promise<void> => {
+      const startUpload = async (): Promise<void> => {
     for (let i = 0; i < queue.length; i += 1) {
       if (queue[i]!.status !== 'pending') continue;
       updateItem(i, { status: 'uploading', progress: 0 });
       try {
-        await uploadMedia.mutateAsync({
+        const asset = await uploadMedia.mutateAsync({
           file: queue[i]!.file,
           brandId,
           onProgress: (percent) => updateItem(i, { progress: percent }),
         });
         updateItem(i, { status: 'done', progress: 100 });
+        if (onUploaded) onUploaded(asset);
       } catch {
         updateItem(i, { status: 'error' });
       }

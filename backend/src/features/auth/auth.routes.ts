@@ -18,6 +18,10 @@ export const authRouter = Router();
 authRouter.post('/register', authRateLimiter, validate(registerSchema), authController.register);
 authRouter.post('/login', authRateLimiter, validate(loginSchema), authController.login);
 authRouter.post('/refresh', authController.refresh);
-authRouter.post('/logout', authenticate, authController.logout);
+// Logout is intentionally NOT behind `authenticate`: tearing down a session
+// must work even when the access token has already expired. The controller
+// clears cookies unconditionally and best-effort revokes the stored refresh
+// hash from whichever token is presented.
+authRouter.post('/logout', authController.logout);
 authRouter.get('/me', authenticate, authController.me);
 authRouter.get('/config', authController.getAuthConfig);

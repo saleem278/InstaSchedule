@@ -1,12 +1,12 @@
 import { Worker } from 'bullmq';
-import { redisConnection } from '../config/redis';
 import { logger } from '../config/logger';
 import { connectDb } from '../config/db';
+import { config } from '../config/env';
 import { IMAGE_GENERATION_QUEUE } from './queueNames';
 import { processImageGenerationJob, GenerateImageJobData } from './processors/generateImage.processor';
 
 async function start(): Promise<void> {
-  if (!redisConnection) {
+  if (!config.REDIS_URL) {
     logger.warn('REDIS_URL not set — worker process requires Redis to do anything useful. Exiting.');
     return;
   }
@@ -18,7 +18,7 @@ async function start(): Promise<void> {
     async (job) => {
       await processImageGenerationJob({ data: job.data });
     },
-    { connection: redisConnection }
+    { connection: { url: config.REDIS_URL } }
   );
 
   worker.on('completed', (job) => {

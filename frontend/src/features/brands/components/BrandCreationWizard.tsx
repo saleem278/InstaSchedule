@@ -230,7 +230,12 @@ export function BrandCreationWizard(): React.JSX.Element {
             {step === 3 && (
               <div className="flex flex-col gap-5">
                 <div className="flex items-center gap-3">
-                  <LogoDropzone value={values.logoUrl} fallbackLabel={values.name[0]?.toUpperCase() ?? '?'} onChange={() => {}} />
+                  <LogoDropzone
+                    value={values.logoUrl}
+                    fallbackLabel={values.name[0]?.toUpperCase() ?? '?'}
+                    onChange={() => {}}
+                    readOnly
+                  />
                   <div>
                     <p className="text-base font-semibold text-textPrimary">{values.name}</p>
                     {values.website && <p className="text-sm text-textSecondary">{values.website}</p>}

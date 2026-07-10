@@ -13,18 +13,29 @@ import type {
  * the typed payload — never re-unwrap `.data.data` here.
  */
 
-export async function generateFull(projectId: string): Promise<GenerateFullResult> {
+export interface GenerationOptions {
+  textProvider?: string;
+  imageProvider?: string;
+  textModel?: string;
+  imageModel?: string;
+}
+
+export async function generateFull(
+  projectId: string,
+  options?: GenerationOptions
+): Promise<GenerateFullResult> {
   return apiClient
-    .post<GenerateFullResult>(GENERATION_ENDPOINTS.generateFull(projectId))
+    .post<GenerateFullResult>(GENERATION_ENDPOINTS.generateFull(projectId), options ?? {})
     .then((res) => res.data);
 }
 
 export async function regenerateField(
   projectId: string,
-  field: RegenerableField | 'image'
+  field: RegenerableField | 'image',
+  options?: GenerationOptions
 ): Promise<RegenerateFieldResult> {
   return apiClient
-    .post<RegenerateFieldResult>(GENERATION_ENDPOINTS.regenerateField(projectId, field))
+    .post<RegenerateFieldResult>(GENERATION_ENDPOINTS.regenerateField(projectId, field), options ?? {})
     .then((res) => res.data);
 }
 

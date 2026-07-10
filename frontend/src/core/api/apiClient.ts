@@ -31,12 +31,64 @@ const apiClient = axios.create({
   withCredentials: true,
 });
 
-let isRefreshing = false;
-let refreshPromise: Promise<void> | null = null;
+/**
+ * Called once when a session is definitively gone (refresh failed). The app
+ * wires this (see App.tsx) to clear the `me` query cache and navigate to
+ * /login via React Router, so we avoid a jarring full-page `window.location`
+ * reload that would blow away app state and the preserved `from` location.
+ * Until wired, we fall back to a guarded location redirect.
+ */
+type SessionExpiredHandler = () => void;
+let onSessionExpired: SessionExpiredHandler | null = null;
+export function setSessionExpiredHandler(handler: SessionExpiredHandler | null): void {
+  onSessionExpired = handler;
+}
 
+function handleSessionExpired(): void {
+  if (onSessionExpired) {
+    onSessionExpired();
+    return;
+  }
+  // Fallback: only hard-redirect if we're not already on the login page.
+  if (!window.location.pathname.startsWith('/login')) {
+    window.location.assign('/login');
+  }
+}
+
+// Shared refresh state. `refreshPromise` resolves to whether the refresh
+// SUCCEEDED, so every concurrent 401 waiter branches on one shared result
+// (retry on success, reject-without-loop on failure) rather than each firing
+// its own refresh/redirect.
+let refreshPromise: Promise<boolean> | null = null;
+
+function refreshSession(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = apiClient
+      .post(AUTH_ENDPOINTS.refresh)
+      .then(() => true)
+      .catch(() => false)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+/**
+ * Requests that must NOT trigger the refresh-and-retry dance on a 401:
+ *  - refresh/login: bootstrapping the session itself.
+ *  - me/config: unauthenticated PROBES — a 401 here is a normal "logged out"
+ *    signal that useCurrentUser resolves to null; refreshing/redirecting on it
+ *    would spuriously reload on every logged-out page visit.
+ */
 function isAuthBootstrapRequest(url?: string): boolean {
   if (!url) return false;
-  return url.includes(AUTH_ENDPOINTS.refresh) || url.includes(AUTH_ENDPOINTS.login);
+  return (
+    url.includes(AUTH_ENDPOINTS.refresh) ||
+    url.includes(AUTH_ENDPOINTS.login) ||
+    url.includes(AUTH_ENDPOINTS.me) ||
+    url.includes(AUTH_ENDPOINTS.config)
+  );
 }
 
 apiClient.interceptors.response.use(
@@ -74,24 +126,14 @@ apiClient.interceptors.response.use(
     if (status === 401 && originalRequest && !originalRequest._retry && !isAuthBootstrapRequest(requestUrl)) {
       originalRequest._retry = true;
 
-      try {
-        if (!isRefreshing) {
-          isRefreshing = true;
-          refreshPromise = apiClient
-            .post(AUTH_ENDPOINTS.refresh)
-            .then(() => undefined)
-            .finally(() => {
-              isRefreshing = false;
-              refreshPromise = null;
-            });
-        }
-
-        await refreshPromise;
+      const refreshed = await refreshSession();
+      if (refreshed) {
         return apiClient.request(originalRequest);
-      } catch {
-        window.location.assign('/login');
-        return Promise.reject(error);
       }
+      // Refresh failed → session is gone. Signal once (all concurrent waiters
+      // call this; it's idempotent) and reject so callers stop.
+      handleSessionExpired();
+      return Promise.reject(error);
     }
 
     return Promise.reject(error);

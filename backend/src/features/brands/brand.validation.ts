@@ -14,6 +14,10 @@ export const createBrandSchema = z.object({
   instagramUserId: z.string().trim().optional(),
   // Allow empty string so the settings form can explicitly clear a stored token.
   instagramAccessToken: z.string().optional(),
+  defaultTextProvider: z.string().optional(),
+  defaultImageProvider: z.string().optional(),
+  defaultTextModel: z.string().optional(),
+  defaultImageModel: z.string().optional(),
 });
 
 export const updateBrandSchema = createBrandSchema.partial();

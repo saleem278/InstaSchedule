@@ -24,11 +24,20 @@ export function RescheduleMiniPicker({
 }: RescheduleMiniPickerProps): React.JSX.Element {
   const [date, setDate] = useState<Date>(initialDate);
   const [time, setTime] = useState(format(initialDate, 'HH:mm'));
+  const [error, setError] = useState<string | null>(null);
 
   const handleConfirm = (): void => {
     const [hours, minutes] = time.split(':').map(Number);
     const combined = new Date(date);
     combined.setHours(hours ?? 0, minutes ?? 0, 0, 0);
+    // Rescheduling into the past would make the publish engine fire the post on
+    // its next tick (≤60s) — never what dragging/rescheduling on a calendar
+    // intends. Block it here (the backend also rejects it as a safety net).
+    if (combined.getTime() <= Date.now()) {
+      setError('Pick a time in the future.');
+      return;
+    }
+    setError(null);
     onConfirm(combined);
   };
 
@@ -37,7 +46,13 @@ export function RescheduleMiniPicker({
       <Calendar
         mode="single"
         selected={date}
-        onSelect={(value) => value && setDate(value)}
+        onSelect={(value) => {
+          if (value) {
+            setDate(value);
+            setError(null);
+          }
+        }}
+        disabled={{ before: new Date() }}
         className="rounded-md border border-border p-0"
       />
       <div className="flex flex-col gap-1.5">
@@ -48,8 +63,12 @@ export function RescheduleMiniPicker({
           id="reschedule-time"
           type="time"
           value={time}
-          onChange={(event) => setTime(event.target.value)}
+          onChange={(event) => {
+            setTime(event.target.value);
+            setError(null);
+          }}
         />
+        {error && <p className="text-xs text-danger">{error}</p>}
       </div>
       <div className="flex items-center justify-end gap-2">
         <Button variant="outline" size="sm" onClick={onCancel} disabled={isSaving}>

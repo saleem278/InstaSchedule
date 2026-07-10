@@ -10,13 +10,24 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { LogoDropzone } from './LogoDropzone';
 import { ColorPickerField } from './ColorPickerField';
 import { FontPairingPicker } from './FontPairingPicker';
 import { ToneChipSelector } from './ToneChipSelector';
+import ProviderSelector from './ProviderSelector';
 import { useBrand } from '../hooks/useBrand';
 import { useUpdateBrand } from '../hooks/useUpdateBrand';
 import { useDeleteBrand } from '../hooks/useDeleteBrand';
+import { listProviders, ProvidersResponse } from '@/features/system/api/providers.api';
+import { useQuery } from '@tanstack/react-query';
 import {
   brandFormSchema,
   FONT_PAIRINGS,
@@ -47,6 +58,10 @@ function brandToFormValues(brand: Brand): BrandFormValues {
     fontPairingId,
     tone,
     audience: brand.audience ?? '',
+    defaultTextProvider: brand.defaultTextProvider ?? '',
+    defaultImageProvider: brand.defaultImageProvider ?? '',
+    defaultTextModel: brand.defaultTextModel ?? '',
+    defaultImageModel: brand.defaultImageModel ?? '',
   };
 }
 
@@ -60,28 +75,33 @@ function toBrandPayload(values: BrandFormValues): Partial<BrandPayload> {
     logoUrl: values.logoUrl || undefined,
     website: values.website || undefined,
     instagramUsername: values.instagramUsername || undefined,
-    // Send instagramUserId verbatim — an explicit '' tells the backend to
-    // DISCONNECT (clear both id and token). Omitting it (undefined) would make
-    // disconnecting impossible.
-    instagramUserId: values.instagramUserId ?? '',
-    // Only send the token when the user actually typed one; '' means "unchanged"
-    // (the backend keeps the stored token) unless disconnecting, where the
-    // backend clears it based on the empty userId.
+    // Only send instagramUserId when non-empty. Disconnecting is now an
+    // explicit, confirmed action (the Disconnect button sends '' directly), so
+    // Save must NOT implicitly wipe the token just because the field was
+    // cleared — that was a surprise-data-loss trap.
+    instagramUserId: values.instagramUserId ? values.instagramUserId : undefined,
+    // Only send the token when the user actually typed one; omitting it keeps
+    // the stored token unchanged.
     instagramAccessToken: values.instagramAccessToken ? values.instagramAccessToken : undefined,
     colors: colors.length > 0 ? colors : undefined,
     fonts: [values.fontPairingId],
     tone: values.tone.join(', '),
     audience: values.audience,
+    defaultTextProvider: values.defaultTextProvider || undefined,
+    defaultImageProvider: values.defaultImageProvider || undefined,
+    defaultTextModel: values.defaultTextModel || undefined,
+    defaultImageModel: values.defaultImageModel || undefined,
   };
 }
 
 export function BrandSettingsPage(): React.JSX.Element {
   const { brandId } = useParams<{ brandId: string }>();
   const navigate = useNavigate();
-  const { data: brand, isLoading } = useBrand(brandId);
+  const { data: brand, isLoading, isError } = useBrand(brandId);
   const updateBrand = useUpdateBrand();
   const deleteBrand = useDeleteBrand();
   const [confirmName, setConfirmName] = useState('');
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
   const form = useForm<BrandFormValues>({
     resolver: zodResolver(brandFormSchema),
@@ -94,6 +114,27 @@ export function BrandSettingsPage(): React.JSX.Element {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brand]);
+
+  // Distinguish "still loading" from "load failed" (e.g. deleted or foreign
+  // brand → 404) so a failed fetch doesn't leave the page stuck on skeletons
+  // forever with no way out.
+  if (isError || (!isLoading && !brand && brandId)) {
+    return (
+      <div className="mx-auto flex max-w-3xl flex-col items-center gap-4 py-16 text-center">
+        <AlertTriangle className="h-8 w-8 text-danger" />
+        <div>
+          <h1 className="text-lg font-semibold text-textPrimary">Brand not found</h1>
+          <p className="mt-1 text-sm text-textSecondary">
+            This brand may have been deleted or isn&apos;t available on your account.
+          </p>
+        </div>
+        <Button onClick={() => navigate('/brands')}>
+          <ArrowLeft className="h-4 w-4" />
+          Back to brands
+        </Button>
+      </div>
+    );
+  }
 
   if (isLoading || !brand || !brandId) {
     return (
@@ -124,6 +165,23 @@ export function BrandSettingsPage(): React.JSX.Element {
     });
   };
 
+  // Explicit, confirmed disconnect. Sending instagramUserId: '' triggers the
+  // backend's disconnect branch (clears both the id and the stored token).
+  // We reset the form's IG fields on success so the UI reflects the cleared
+  // state without waiting on the refetch.
+  const handleDisconnectInstagram = (): void => {
+    updateBrand.mutate(
+      { brandId, payload: { instagramUserId: '' } },
+      {
+        onSuccess: () => {
+          form.setValue('instagramUserId', '');
+          form.setValue('instagramAccessToken', '');
+          setConfirmDisconnect(false);
+        },
+      }
+    );
+  };
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 py-10">
       <div className="flex items-center gap-3">
@@ -142,6 +200,7 @@ export function BrandSettingsPage(): React.JSX.Element {
             <TabsTrigger value="identity">Identity</TabsTrigger>
             <TabsTrigger value="visual">Visual</TabsTrigger>
             <TabsTrigger value="voice">Voice</TabsTrigger>
+            <TabsTrigger value="ai">AI</TabsTrigger>
             <TabsTrigger value="publishing">Publishing</TabsTrigger>
             <TabsTrigger value="danger">Danger Zone</TabsTrigger>
           </TabsList>
@@ -248,6 +307,23 @@ export function BrandSettingsPage(): React.JSX.Element {
           </Card>
         </TabsContent>
 
+        <TabsContent value="ai">
+          <Card>
+            <CardHeader>
+              <CardTitle>AI Providers</CardTitle>
+              <CardDescription>Per-brand defaults for text and image providers used during generation.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <ProviderSelector brandId={brandId!} form={form} />
+              <div className="flex justify-end">
+                <Button onClick={handleSave} disabled={updateBrand.isPending}>
+                  {updateBrand.isPending ? 'Saving…' : 'Save changes'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="publishing">
           <Card>
             <CardHeader>
@@ -261,9 +337,22 @@ export function BrandSettingsPage(): React.JSX.Element {
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               {brand.instagramConnected ? (
-                <div className="flex items-center gap-2 rounded-md border border-success/40 bg-successSubtle/40 px-3 py-2 text-sm text-textPrimary">
+                <div className="flex flex-wrap items-center gap-2 rounded-md border border-success/40 bg-successSubtle/40 px-3 py-2 text-sm text-textPrimary">
                   <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
-                  Connected to Instagram account <span className="font-medium">{values.instagramUserId}</span>
+                  {/* Bind to PERSISTED brand data, not the live-typed form value,
+                      so editing the ID field doesn't make the banner claim a
+                      connection to an unsaved id. */}
+                  Connected to Instagram account <span className="font-medium">{brand.instagramUserId}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto text-danger hover:bg-dangerSubtle hover:text-danger"
+                    onClick={() => setConfirmDisconnect(true)}
+                    disabled={updateBrand.isPending}
+                  >
+                    Disconnect
+                  </Button>
                 </div>
               ) : (
                 <p className="rounded-md border border-border bg-backgroundMuted/60 px-3 py-2 text-sm text-textSecondary">
@@ -339,6 +428,26 @@ export function BrandSettingsPage(): React.JSX.Element {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={confirmDisconnect} onOpenChange={setConfirmDisconnect}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Disconnect Instagram?</DialogTitle>
+            <DialogDescription>
+              This removes the stored account id and access token for {brand.name}. You won&apos;t be able to
+              publish or schedule posts for this brand until you reconnect.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDisconnect(false)} disabled={updateBrand.isPending}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDisconnectInstagram} disabled={updateBrand.isPending}>
+              {updateBrand.isPending ? 'Disconnecting…' : 'Disconnect'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -16,6 +16,10 @@ export interface Brand {
   instagramUserId?: string;
   /** Derived by the API: true when an IG account id is configured. The raw access token is never returned. */
   instagramConnected?: boolean;
+  defaultTextProvider?: string;
+  defaultImageProvider?: string;
+  defaultTextModel?: string;
+  defaultImageModel?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -38,4 +42,8 @@ export interface BrandPayload {
   instagramUserId?: string;
   /** Write-only: sent when the user enters/changes the token; never returned by reads. */
   instagramAccessToken?: string;
+  defaultTextProvider?: string;
+  defaultImageProvider?: string;
+  defaultTextModel?: string;
+  defaultImageModel?: string;
 }

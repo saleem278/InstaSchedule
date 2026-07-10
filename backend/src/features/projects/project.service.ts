@@ -1,5 +1,6 @@
 import { NotFoundError } from '../../core/errors/AppError';
 import { BrandModel } from '../brands/brand.model';
+import * as mediaRepository from '../media/media.repository';
 import * as projectRepository from './project.repository';
 import { ListFilters, ListResult, ProjectWithImage } from './project.repository';
 import { ProjectDocument, ProjectStatus } from './project.model';
@@ -28,6 +29,18 @@ export async function create(userId: string, data: CreateProjectInput): Promise<
 
 export async function update(id: string, userId: string, data: UpdateProjectInput): Promise<ProjectDocument> {
   await getById(id, userId);
+
+  // Ownership check on the referenced MediaAsset before repointing the project
+  // at it — without this, a user could set imageAssetId to another user's
+  // private asset and then read or publish it (IDOR). Mirrors the brand-
+  // ownership check in create().
+  if (data.imageAssetId !== undefined) {
+    const asset = await mediaRepository.findByIdForUser(data.imageAssetId, userId);
+    if (!asset) {
+      throw new NotFoundError('Media asset not found');
+    }
+  }
+
   const updated = await projectRepository.update(id, userId, data);
   if (!updated) {
     throw new NotFoundError('Project not found');

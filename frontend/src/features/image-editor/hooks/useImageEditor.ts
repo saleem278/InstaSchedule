@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Canvas, FabricImage, filters as fabricFilters, Rect, Textbox } from 'fabric';
+import { Canvas, FabricImage, FabricObject, filters as fabricFilters, Rect, Textbox } from 'fabric';
+import { toEditorSrc } from '../imageSrc';
+
+// Fabric v6 does NOT serialize custom props (like our `name`) through
+// toObject()/toJSON() unless they're registered here. Without this, after any
+// undo/redo/reset the restored objects lose `name`, so the base image can't be
+// re-identified (filters silently stop working) and logo/watermark opacity
+// controls never reappear. Registering it once makes `name` round-trip.
+if (!FabricObject.customProperties?.includes('name')) {
+  FabricObject.customProperties = [...(FabricObject.customProperties ?? []), 'name'];
+}
 
 /** Tool ids for the left icon rail / bottom toolbar. */
 export type EditorTool = 'crop' | 'resize' | 'rotate-flip' | 'text' | 'logo' | 'filters' | null;
@@ -98,7 +108,11 @@ export function useImageEditor({ imageUrl }: UseImageEditorOptions): UseImageEdi
     canvas.on('selection:updated', handleSelection);
     canvas.on('selection:cleared', () => setSelectedObject(null));
 
-    FabricImage.fromURL(imageUrl, { crossOrigin: 'anonymous' })
+    // The src is now guaranteed same-origin (proxy or relative /uploads), so we
+    // deliberately do NOT set crossOrigin: 'anonymous' — that would force CORS
+    // mode and omit the auth cookie the credentialed proxy needs. Same-origin
+    // images never taint the canvas.
+    FabricImage.fromURL(toEditorSrc(imageUrl))
       .then((img) => {
         if (disposed) return;
 
@@ -133,9 +147,13 @@ export function useImageEditor({ imageUrl }: UseImageEditorOptions): UseImageEdi
 
     return () => {
       disposed = true;
-      canvas.dispose();
-      canvasRef.current = null;
-      baseImageRef.current = null;
+      void canvas.dispose();
+      // Only clear the refs if they still point at THIS canvas — under React 19
+      // StrictMode's mount→cleanup→mount, the second mount may have already
+      // installed its own canvas before this first cleanup runs, and nulling
+      // unconditionally would strand the live instance with null refs.
+      if (canvasRef.current === canvas) canvasRef.current = null;
+      if (baseImageRef.current && canvasRef.current === null) baseImageRef.current = null;
     };
     // imageUrl is treated as fixed for the editor's lifetime — a new image
     // means mounting a new ImageEditor instance (parent controls this via key).

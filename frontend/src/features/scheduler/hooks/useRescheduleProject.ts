@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
 import { updateProjectSchedule } from '../api/scheduler.api';
 import { schedulerKeys } from './schedulerKeys';
 import { projectKeys } from '@/features/projects/hooks/projectKeys';
@@ -54,8 +55,15 @@ export function useRescheduleProject() {
       toast.error('Could not reschedule post. Please try again.');
     },
 
-    onSuccess: () => {
-      toast.success('Post rescheduled');
+    onSuccess: (_data, { scheduledAt }) => {
+      // Include the destination date so a post rescheduled to a different month
+      // (which then disappears from the current calendar view) doesn't just
+      // silently vanish — the user sees where it went.
+      if (scheduledAt) {
+        toast.success(`Rescheduled to ${format(new Date(scheduledAt), 'MMM d, h:mm a')}`);
+      } else {
+        toast.success('Post unscheduled');
+      }
     },
 
     onSettled: async () => {

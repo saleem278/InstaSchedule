@@ -35,7 +35,13 @@ export class LocalDiskStorageProvider implements StorageProvider {
   }
 
   async delete(publicId: string): Promise<void> {
-    const filePath = path.join(UPLOADS_ROOT, publicId);
+    const filePath = path.resolve(UPLOADS_ROOT, publicId);
+    // Defense-in-depth: `publicId` is server-generated today, but never let a
+    // join escape the uploads root (arbitrary-file-delete) if that invariant
+    // ever breaks (e.g. a provider-switch mismatch feeding a foreign id here).
+    if (filePath !== UPLOADS_ROOT && !filePath.startsWith(UPLOADS_ROOT + path.sep)) {
+      return;
+    }
     try {
       await fs.unlink(filePath);
     } catch (error) {

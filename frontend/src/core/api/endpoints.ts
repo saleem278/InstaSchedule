@@ -46,6 +46,8 @@ export const GENERATION_ENDPOINTS = {
 export const MEDIA_ENDPOINTS = {
   list: '/media',
   upload: '/media/upload',
+  /** Same-origin image proxy — load remote images through this so the editor canvas doesn't taint. */
+  proxy: (url: string) => `/media/proxy?url=${encodeURIComponent(url)}`,
   detail: (assetId: string) => `/media/${assetId}`,
   update: (assetId: string) => `/media/${assetId}`,
   delete: (assetId: string) => `/media/${assetId}`,
@@ -63,5 +65,9 @@ export const MEDIA_ENDPOINTS = {
 export const SCHEDULER_ENDPOINTS = {
   calendar: '/scheduler/calendar',
   updateSchedule: (projectId: string) => `/scheduler/${projectId}/schedule`,
+} as const;
+
+export const PROVIDER_ENDPOINTS = {
+  list: '/providers',
 } as const;
 

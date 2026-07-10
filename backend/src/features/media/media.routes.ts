@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../core/middleware/authenticate';
 import { validate } from '../../core/middleware/validate';
+import { uploadRateLimiter } from '../../core/middleware/rateLimit';
 import { uploadSingleImage } from './upload.middleware';
 import {
   createCollectionSchema,
@@ -17,6 +18,7 @@ import {
   getAsset,
   listAssets,
   listCollections,
+  proxyImage,
   removeAssetFromCollection,
   updateAsset,
   updateCollection,
@@ -37,7 +39,9 @@ mediaRouter.delete('/collections/:collectionId/assets/:assetId', removeAssetFrom
 
 // Assets
 mediaRouter.get('/', validate(listQuerySchema, 'query'), listAssets);
-mediaRouter.post('/upload', uploadSingleImage, uploadAsset);
+mediaRouter.post('/upload', uploadRateLimiter, uploadSingleImage, uploadAsset);
+// Registered before /:assetId so "proxy" isn't captured as an asset id.
+mediaRouter.get('/proxy', proxyImage);
 mediaRouter.get('/:assetId', getAsset);
 mediaRouter.patch('/:assetId', validate(updateAssetSchema), updateAsset);
 mediaRouter.delete('/:assetId', deleteAsset);

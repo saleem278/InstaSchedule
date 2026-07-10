@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { AlertCircle, RotateCw, Shuffle, CalendarClock, ImageIcon, Send } from 'lucide-react';
+import { extractErrorMessage } from '@/core/api/extractErrorMessage';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -11,14 +13,55 @@ import { StepTracker, type Step } from './StepTracker';
 import { FieldCard } from './FieldCard';
 import { HashtagChipInput } from './HashtagChipInput';
 import { useGenerateContent } from '../hooks/useGenerateContent';
+import { listProviders, ProvidersResponse } from '@/features/system/api/providers.api';
+import { useQuery } from '@tanstack/react-query';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import { useRegenerateField } from '../hooks/useRegenerateField';
 import { useJobPolling } from '../hooks/useJobPolling';
 import { useUpdateProject } from '@/features/projects/hooks/useUpdateProject';
 import { useUpdateProjectStatus } from '@/features/projects/hooks/useUpdateProjectStatus';
 import { usePublishProject } from '@/features/projects/hooks/usePublishProject';
 import { ImageEditor } from '@/features/image-editor';
+import { MediaUploadDropzone } from '@/features/media/components/MediaUploadDropzone';
 import type { Project } from '@/features/projects/schemas/project.types';
-import type { RegenerableField } from '../schemas/generation.types';
+import type { GenerateFullResult, RegenerableField } from '../schemas/generation.types';
+
+const TEXT_PROVIDER_MODELS: Record<string, { label: string; value: string }[]> = {
+  groq: [
+    { label: 'GPT OSS 20B (Default)', value: 'openai/gpt-oss-20b' },
+    { label: 'Llama 3 8B', value: 'llama3-8b-8192' },
+    { label: 'Llama 3 70B', value: 'llama3-70b-8192' },
+    { label: 'Mixtral 8x7B', value: 'mixtral-8x7b-32768' },
+  ],
+  openai: [
+    { label: 'GPT-4o Mini (Default)', value: 'gpt-4o-mini' },
+    { label: 'GPT-4o', value: 'gpt-4o' },
+    { label: 'GPT-3.5 Turbo', value: 'gpt-3.5-turbo' },
+  ],
+  gemini: [
+    { label: 'Gemini 2.5 Flash (Default)', value: 'gemini-2.5-flash' },
+    { label: 'Gemini 2.5 Pro', value: 'gemini-2.5-pro' },
+    { label: 'Gemini 1.5 Flash', value: 'gemini-1.5-flash' },
+    { label: 'Gemini 1.5 Pro', value: 'gemini-1.5-pro' },
+  ],
+};
+
+const IMAGE_PROVIDER_MODELS: Record<string, { label: string; value: string }[]> = {
+  gemini: [
+    { label: 'Imagen 4.0 Generate (Default)', value: 'imagen-4.0-generate-001' },
+    { label: 'Imagen 3.0 Generate', value: 'imagen-3.0-generate-002' },
+  ],
+  pollinations: [
+    { label: 'Default Model', value: '' },
+    { label: 'Flux', value: 'flux' },
+  ],
+};
 
 const STEPS: Step[] = [
   { key: 'topic', label: 'Understanding topic' },
@@ -68,7 +111,17 @@ export function GenerationProgress({
   const [liveMessage, setLiveMessage] = useState('Understanding topic');
   const [glowPulse, setGlowPulse] = useState(false);
   const [isEditingImage, setIsEditingImage] = useState(false);
-  const [imageJobId, setImageJobId] = useState<string | undefined>(undefined);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  // On revisit (skipGeneration), if the project has no image yet but does have
+  // an activeGeneration, that generation may still be processing (the user left
+  // the wizard early). Seed the poller with it so we resume tracking instead of
+  // wrongly declaring the image failed. `getJobStatus` looks the Generation up
+  // by its own _id, which is exactly what activeGeneration holds.
+  const [imageJobId, setImageJobId] = useState<string | undefined>(
+    skipGeneration && !project.imageAsset?.url && project.activeGeneration
+      ? project.activeGeneration
+      : undefined
+  );
 
   // Local editable field state, seeded from the project's persisted content —
   // this is also the initial state while a fresh generation is in flight (the
@@ -89,10 +142,99 @@ export function GenerationProgress({
   const jobQuery = useJobPolling(project._id, imageJobId);
 
   const hasFiredRef = useRef(false);
+  const hasFailedToastRef = useRef(false);
+
+  const { data: providers } = useQuery<ProvidersResponse>({ queryKey: ['providers', project.brand], queryFn: () => listProviders(project.brand) });
+  const [selectedTextProvider, setSelectedTextProvider] = useState<string | undefined>(providers?.defaultTextProvider);
+  const [selectedImageProvider, setSelectedImageProvider] = useState<string | undefined>(providers?.defaultImageProvider);
+  const [selectedTextModel, setSelectedTextModel] = useState<string>('');
+  const [selectedImageModel, setSelectedImageModel] = useState<string>('');
+
+  useEffect(() => {
+    if (providers) {
+      setSelectedTextProvider(providers.defaultTextProvider);
+      setSelectedImageProvider(providers.defaultImageProvider);
+      setSelectedTextModel(providers.defaultTextModel || '');
+      setSelectedImageModel(providers.defaultImageModel || '');
+    }
+  }, [providers]);
+
+  // Consumes a successful generate result. Centralized (rather than inlined in
+  // the mount effect's onSuccess) so the failure-retry button can re-run the
+  // EXACT same result-handling — otherwise a retry succeeds on the server but
+  // the component never reads the response and stays stuck in 'generating'.
+  const applyGenerateResult = useCallback((result: GenerateFullResult) => {
+    setCaption(result.generation.output.caption);
+    setCta(result.generation.output.cta);
+    setHashtags(result.generation.output.hashtags);
+    setAltText(result.generation.output.altText);
+    setImagePrompt(result.generation.output.imagePrompt);
+    if (result.generation.output.imageUrl) {
+      setImageUrl(result.generation.output.imageUrl);
+    }
+    setImageJobId(result.imageJob.jobId);
+
+    // Stagger the CHECKMARK animations even though the text arrived in one
+    // response — a deliberate cosmetic choice to keep the tracker sequential.
+    setCompletedIndices((prev) => new Set(prev).add(0));
+    setPacingStepIndex(2);
+    setLiveMessage('Crafting hashtags');
+    setTimeout(() => setCompletedIndices((prev) => new Set(prev).add(1)), 350);
+    setTimeout(() => {
+      setCompletedIndices((prev) => new Set(prev).add(2));
+      setPacingStepIndex(3);
+      setLiveMessage('Generating image');
+    }, 700);
+  }, []);
+
+  const truncateToastText = (message: string, maxLength = 300) => {
+    const trimmed = message.trim();
+    return trimmed.length <= maxLength ? trimmed : `${trimmed.slice(0, maxLength - 3)}...`;
+  };
+
+  // Fires the generate mutation and wires the shared result handler. Reused by
+  // both the mount effect and the retry button.
+  const runGeneration = useCallback(() => {
+    hasFailedToastRef.current = false;
+    // A retry after a failure needs the step tracker reset out of its errored
+    // pacing so the animation restarts cleanly.
+    setPacingStepIndex(1);
+    setLiveMessage('Writing caption');
+    generateMutation.mutate(
+      {
+        projectId: project._id,
+        options: {
+          textProvider: selectedTextProvider,
+          imageProvider: selectedImageProvider,
+          textModel: selectedTextModel || undefined,
+          imageModel: selectedImageModel || undefined,
+        },
+      },
+      {
+        onSuccess: (result) => {
+          applyGenerateResult(result);
+          if (result.generation.status === 'failed' || result.imageJob.status === 'failed') {
+            hasFailedToastRef.current = true;
+            toast.error(
+              truncateToastText(result.generation.errorMessage ?? 'Something went wrong generating this.'),
+              { id: `generate-fail-${Date.now()}` }
+            );
+          }
+        },
+        onError: (error) => {
+          hasFailedToastRef.current = true;
+          toast.error(
+            truncateToastText(extractErrorMessage(error, 'Something went wrong generating this.')),
+            { id: `generate-error-${Date.now()}` }
+          );
+        },
+      }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project._id, applyGenerateResult, selectedTextProvider, selectedImageProvider, selectedTextModel, selectedImageModel]);
 
   // --- Step 2: fire the generate mutation on mount, with a short cosmetic
-  // pacing timer to advance "Understanding topic" -> "Writing caption" while
-  // we wait (the backend has no granular progress to drive this off of). ---
+  // pacing timer to advance "Understanding topic" -> "Writing caption". ---
   useEffect(() => {
     if (skipGeneration) return;
     if (hasFiredRef.current) return;
@@ -103,41 +245,13 @@ export function GenerationProgress({
       setLiveMessage('Writing caption');
     }, 800);
 
-    generateMutation.mutate(project._id, {
-      onSuccess: (result) => {
-        setCaption(result.generation.output.caption);
-        setCta(result.generation.output.cta);
-        setHashtags(result.generation.output.hashtags);
-        setAltText(result.generation.output.altText);
-        setImagePrompt(result.generation.output.imagePrompt);
-        if (result.generation.output.imageUrl) {
-          setImageUrl(result.generation.output.imageUrl);
-        }
-        setImageJobId(result.imageJob.jobId);
-
-        // Step 3: stagger the CHECKMARK animations for "Understanding topic"
-        // and "Writing caption" even though the text arrived in one response
-        // together — this is a deliberate cosmetic choice to keep the
-        // tracker feeling sequential/alive rather than all steps completing
-        // instantly. Hashtags checkmark follows shortly after.
-        setCompletedIndices((prev) => new Set(prev).add(0));
-        setPacingStepIndex(2);
-        setTimeout(() => setCompletedIndices((prev) => new Set(prev).add(1)), 350);
-        setTimeout(() => {
-          setCompletedIndices((prev) => new Set(prev).add(2));
-          setPacingStepIndex(3);
-          setLiveMessage('Generating image');
-        }, 700);
-      },
-    });
+    runGeneration();
 
     return () => {
       clearTimeout(pacingTimer);
       // Reset the guard on cleanup so React 19 StrictMode's dev-only
       // mount->cleanup->remount cycle doesn't skip firing the mutation on
-      // the remount that actually persists (the ref would otherwise still
-      // read `true` from the discarded first mount, silently attaching
-      // onSuccess to a component instance that gets thrown away).
+      // the remount that actually persists.
       hasFiredRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -151,9 +265,33 @@ export function GenerationProgress({
       setPacingStepIndex(4);
       setLiveMessage('Finalizing');
     }
-  }, [jobQuery.data]);
 
-  const textReady = generateMutation.isSuccess;
+    if (jobQuery.data?.status === 'failed' && !hasFailedToastRef.current) {
+      hasFailedToastRef.current = true;
+      toast.error(truncateToastText(jobQuery.data.errorMessage ?? 'Something went wrong generating this.'), {
+        id: `job-fail-${Date.now()}`,
+      });
+    }
+
+    if (jobQuery.timedOut && !hasFailedToastRef.current) {
+      hasFailedToastRef.current = true;
+      toast.error('Image generation timed out. Please try again.', {
+        id: `job-timeout-${Date.now()}`,
+      });
+    }
+  }, [jobQuery.data, jobQuery.timedOut]);
+
+  const textReady = generateMutation.isSuccess || skipGeneration;
+  // An image job is "in flight" whenever we have a jobId whose polled status
+  // hasn't reached a terminal state yet (and hasn't timed out). In async mode
+  // the regenerate mutation resolves the instant the job is ENQUEUED, so this
+  // — not `regenerateMutation.isPending` — is the true "still generating"
+  // signal used to gate the regenerate button and show the loader.
+  const imageJobInFlight =
+    Boolean(imageJobId) &&
+    jobQuery.data?.status !== 'completed' &&
+    jobQuery.data?.status !== 'failed' &&
+    !jobQuery.timedOut;
   const imageReady = Boolean(imageUrl) && (jobQuery.data?.status === 'completed' || !imageJobId);
   // When revisiting an existing project (skipGeneration) there is no active
   // job to poll — if it also has no persisted image, that means a prior
@@ -185,13 +323,39 @@ export function GenerationProgress({
     return pacingStepIndex;
   }, [phase, pacingStepIndex]);
 
-  const generateFailed = generateMutation.isError;
+  const generateFailed =
+    generateMutation.isError ||
+    generateMutation.data?.generation.status === 'failed' ||
+    generateMutation.data?.imageJob.status === 'failed';
+
+  const generateErrorMessage = generateMutation.isError
+    ? extractErrorMessage(generateMutation.error, 'Something went wrong generating this.')
+    : generateFailed
+    ? generateMutation.data?.generation.errorMessage ?? 'Something went wrong generating this.'
+    : undefined;
 
   const regeneratingField = regenerateMutation.isPending ? regenerateMutation.variables?.field : undefined;
 
   function handleRegenerate(field: RegenerableField | 'image') {
+    if (field === 'image') {
+      // Clear the previous image up front so the preview returns to the
+      // loading state immediately, and — critically — so a failed/timed-out
+      // regeneration surfaces the retry affordance instead of silently
+      // leaving the stale prior image on screen (DevelopingImage only shows
+      // its failed state when there is no imageUrl).
+      setImageUrl(undefined);
+    }
     regenerateMutation.mutate(
-      { projectId: project._id, field },
+      {
+        projectId: project._id,
+        field,
+        options: {
+          textProvider: selectedTextProvider,
+          imageProvider: selectedImageProvider,
+          textModel: selectedTextModel || undefined,
+          imageModel: selectedImageModel || undefined,
+        },
+      },
       {
         onSuccess: (result) => {
           if (result.field === 'image') {
@@ -226,7 +390,8 @@ export function GenerationProgress({
     try {
       await persistFields();
     } catch {
-      return; // useUpdateProject toasts its own error
+      toast.error("Couldn't save your changes, so the draft wasn't saved. Please try again.");
+      return;
     }
     updateStatusMutation.mutate(
       { projectId: project._id, payload: { status: 'draft' } },
@@ -238,6 +403,7 @@ export function GenerationProgress({
     try {
       await persistFields();
     } catch {
+      toast.error("Couldn't save your changes, so the post wasn't scheduled. Please try again.");
       return;
     }
     updateStatusMutation.mutate(
@@ -253,16 +419,43 @@ export function GenerationProgress({
     try {
       await persistFields();
     } catch {
+      toast.error("Couldn't save your changes, so nothing was published. Please try again.");
       return;
     }
     publishMutation.mutate(project._id, { onSuccess: () => onDone?.() });
   }
 
+  // Handle user-uploaded image: attach the uploaded MediaAsset to the project
+  async function handleUploadedAsset(asset: { _id: string; url: string }) {
+    try {
+      // Persist the selected image on the Project so it's used for preview/publish
+      await updateProjectMutation.mutateAsync({ projectId: project._id, payload: { imageAssetId: asset._id } });
+      setImageUrl(asset.url);
+    } catch {
+      toast.error("Couldn't attach uploaded image. Please try again.");
+    }
+  }
+
   function handleShuffleHashtags() {
-    setHashtags((prev) => [...prev].sort(() => Math.random() - 0.5));
+    // Fisher–Yates: a `sort(() => Math.random() - 0.5)` comparator is
+    // non-uniform and frequently returns the identical order for short arrays,
+    // so the user sees "nothing happened" on click.
+    setHashtags((prev) => {
+      const next = [...prev];
+      for (let i = next.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [next[i], next[j]] = [next[j]!, next[i]!];
+      }
+      return next;
+    });
   }
 
   const isReady = phase === 'ready';
+  // Single busy flag so all three terminal actions (Save Draft / Schedule /
+  // Publish) disable together while ANY of them is in flight — prevents racing
+  // status writes and double onDone() navigations.
+  const actionBusy =
+    updateStatusMutation.isPending || publishMutation.isPending || updateProjectMutation.isPending;
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -300,19 +493,157 @@ export function GenerationProgress({
 
         {/* Right: field cards, 40% on desktop */}
         <div className="flex flex-col gap-4 sm:w-[45%]">
+          {/* Provider & Model selectors */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 bg-surfaceMuted/20 p-3 rounded-lg border border-border/40">
+            {/* Text Generation Configuration */}
+            <div className="space-y-2">
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-textSecondary">Text Provider</label>
+                <Select
+                  value={selectedTextProvider || ''}
+                  onValueChange={(v) => {
+                    setSelectedTextProvider(v);
+                    setSelectedTextModel('');
+                  }}
+                >
+                  <SelectTrigger className="w-full mt-1 h-9">
+                    <SelectValue placeholder="Text provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providers?.textProviders.map((p) => (
+                      <SelectItem key={p.name} value={p.name} disabled={!p.available}>
+                        {p.displayName} {p.available ? '' : ' (unavailable)'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedTextProvider && (
+                <div>
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-textSecondary">Text Model</label>
+                  <Select
+                    value={
+                      selectedTextModel !== '' && !(TEXT_PROVIDER_MODELS[selectedTextProvider] || []).some((m) => m.value === selectedTextModel)
+                        ? '__custom__'
+                        : selectedTextModel
+                    }
+                    onValueChange={(v) => {
+                      if (v === '__custom__') {
+                        setSelectedTextModel(' '); // Space to trigger custom render
+                      } else {
+                        setSelectedTextModel(v);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-full mt-1 h-9">
+                      <SelectValue placeholder="Select text model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Use system default</SelectItem>
+                      {(TEXT_PROVIDER_MODELS[selectedTextProvider] || []).map((m) => (
+                        <SelectItem key={m.value} value={m.value}>
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="__custom__">Custom Model...</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {(selectedTextModel === ' ' ||
+                    (selectedTextModel !== '' && !(TEXT_PROVIDER_MODELS[selectedTextProvider] || []).some((m) => m.value === selectedTextModel))) && (
+                    <Input
+                      className="mt-1 h-8 text-xs"
+                      placeholder="Enter custom model ID"
+                      value={selectedTextModel === ' ' ? '' : selectedTextModel}
+                      onChange={(e) => setSelectedTextModel(e.target.value)}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Image Generation Configuration */}
+            <div className="space-y-2">
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-textSecondary">Image Provider</label>
+                <Select
+                  value={selectedImageProvider || ''}
+                  onValueChange={(v) => {
+                    setSelectedImageProvider(v);
+                    setSelectedImageModel('');
+                  }}
+                >
+                  <SelectTrigger className="w-full mt-1 h-9">
+                    <SelectValue placeholder="Image provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providers?.imageProviders.map((p) => (
+                      <SelectItem key={p.name} value={p.name} disabled={!p.available}>
+                        {p.displayName} {p.available ? '' : ' (unavailable)'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedImageProvider && (
+                <div>
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-textSecondary">Image Model</label>
+                  <Select
+                    value={
+                      selectedImageModel !== '' && !(IMAGE_PROVIDER_MODELS[selectedImageProvider] || []).some((m) => m.value === selectedImageModel)
+                        ? '__custom__'
+                        : selectedImageModel
+                    }
+                    onValueChange={(v) => {
+                      if (v === '__custom__') {
+                        setSelectedImageModel(' '); // Space to trigger custom render
+                      } else {
+                        setSelectedImageModel(v);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-full mt-1 h-9">
+                      <SelectValue placeholder="Select image model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Use system default</SelectItem>
+                      {(IMAGE_PROVIDER_MODELS[selectedImageProvider] || []).map((m) => (
+                        <SelectItem key={m.value} value={m.value}>
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="__custom__">Custom Model...</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {(selectedImageModel === ' ' ||
+                    (selectedImageModel !== '' && !(IMAGE_PROVIDER_MODELS[selectedImageProvider] || []).some((m) => m.value === selectedImageModel))) && (
+                    <Input
+                      className="mt-1 h-8 text-xs"
+                      placeholder="Enter custom model ID"
+                      value={selectedImageModel === ' ' ? '' : selectedImageModel}
+                      onChange={(e) => setSelectedImageModel(e.target.value)}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
           {generateFailed ? (
             <FieldCard title="Caption">
               <div className="flex flex-col items-center gap-3 py-6 text-center">
                 <AlertCircle className="h-8 w-8 text-danger" />
-                <p className="text-sm text-textSecondary">Something went wrong generating this.</p>
+                <p className="text-sm text-textSecondary">{generateErrorMessage}</p>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => generateMutation.mutate(project._id)}
+                  onClick={runGeneration}
                   disabled={generateMutation.isPending}
                 >
                   <RotateCw className="h-3.5 w-3.5" />
-                  Retry
+                  {generateMutation.isPending ? 'Retrying…' : 'Retry'}
                 </Button>
               </div>
             </FieldCard>
@@ -380,8 +711,8 @@ export function GenerationProgress({
           <FieldCard
             title="Image Prompt"
             onRegenerate={isReady ? () => handleRegenerate('image') : undefined}
-            regenerating={regeneratingField === 'image'}
-            shimmer={regeneratingField === 'image'}
+            regenerating={regeneratingField === 'image' || imageJobInFlight}
+            shimmer={regeneratingField === 'image' || imageJobInFlight}
           >
             <div className="space-y-2">
               <Textarea
@@ -391,21 +722,48 @@ export function GenerationProgress({
                 rows={3}
                 placeholder={isReady ? undefined : 'Generating image prompt…'}
               />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-full"
-                disabled={!isReady || regeneratingField === 'image'}
-                onClick={() => handleRegenerate('image')}
-              >
-                <ImageIcon className="h-3.5 w-3.5" />
-                Regenerate Image
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  disabled={!isReady || regeneratingField === 'image' || imageJobInFlight}
+                  onClick={() => handleRegenerate('image')}
+                >
+                  <ImageIcon className="h-3.5 w-3.5" />
+                  {imageJobInFlight ? 'Generating…' : 'Regenerate Image'}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => setUploadOpen(true)}
+                >
+                  Upload Image
+                </Button>
+              </div>
             </div>
           </FieldCard>
         </div>
       </div>
+
+      <MediaUploadDropzone open={uploadOpen} onOpenChange={setUploadOpen} brandId={project.brand} onUploaded={handleUploadedAsset} />
+
+      {/* Surface a prior failed publish (e.g. a background scheduled publish
+          that failed) so the reason is visible when revisiting the project,
+          not just an unexplained state. */}
+      {project.status === 'failed' && project.schedule.lastPublishError && (
+        <div className="mx-4 mb-2 flex items-start gap-2 rounded-md border border-danger/30 bg-dangerSubtle px-3 py-2 sm:mx-8">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-danger">Last publish attempt failed</p>
+            <p className="mt-0.5 break-words text-xs text-textSecondary">{project.schedule.lastPublishError}</p>
+          </div>
+        </div>
+      )}
 
       {/* Sticky bottom action bar */}
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border bg-surface px-4 py-3 sm:px-8">
@@ -425,21 +783,16 @@ export function GenerationProgress({
           {(!imageUrl || !imageReady) && <TooltipContent>Generate an image first</TooltipContent>}
         </Tooltip>
 
-        <Button variant="secondary" onClick={handleSaveDraft} disabled={!isReady || updateStatusMutation.isPending}>
-          Save as Draft
+        <Button variant="secondary" onClick={handleSaveDraft} disabled={!isReady || actionBusy}>
+          {updateStatusMutation.isPending ? 'Saving…' : 'Save as Draft'}
         </Button>
 
-        <ScheduleButton
-          disabled={!isReady || publishMutation.isPending}
-          onSchedule={handleSchedule}
-        />
+        <ScheduleButton disabled={!isReady || actionBusy} onSchedule={handleSchedule} />
 
         <Button
           variant="accent-glow"
           onClick={handlePublishNow}
-          disabled={
-            !isReady || !imageUrl || !imageReady || publishMutation.isPending || updateProjectMutation.isPending
-          }
+          disabled={!isReady || !imageUrl || !imageReady || actionBusy}
         >
           <Send className="h-4 w-4" />
           {publishMutation.isPending ? 'Publishing…' : 'Publish now'}
@@ -448,6 +801,10 @@ export function GenerationProgress({
 
       {isEditingImage && imageUrl && (
         <ImageEditor
+          // Remount (fresh canvas) when the source image changes — the editor's
+          // setup effect intentionally runs once per instance, so a new URL
+          // must be a new instance or it would keep showing the old image.
+          key={imageUrl}
           imageUrl={imageUrl}
           brandLogoUrl={brandLogoUrl}
           brandId={project.brand}
@@ -455,9 +812,15 @@ export function GenerationProgress({
           onDone={(asset) => {
             // Reflect the edit in the preview immediately, then persist the new
             // MediaAsset as the project's image so publishing/revisits use it.
+            // Use mutateAsync so the write is in-flight (actionBusy true) — the
+            // publish/schedule buttons stay disabled until it settles, matching
+            // how text edits are awaited before publish.
             setImageUrl(asset.url);
             setIsEditingImage(false);
-            updateProjectMutation.mutate({ projectId: project._id, payload: { imageAssetId: asset._id } });
+            void updateProjectMutation.mutateAsync({
+              projectId: project._id,
+              payload: { imageAssetId: asset._id },
+            });
           }}
         />
       )}
@@ -475,11 +838,21 @@ function ScheduleButton({ disabled, onSchedule }: ScheduleButtonProps): React.JS
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [time, setTime] = useState('09:00');
 
+  const [error, setError] = useState<string | null>(null);
+
   function confirm() {
     if (!date) return;
     const [hours, minutes] = time.split(':').map(Number);
     const combined = new Date(date);
     combined.setHours(hours ?? 9, minutes ?? 0, 0, 0);
+    // The calendar disables past DAYS, but "today" is selectable and the time
+    // input is unconstrained — so today + a past time yields an instant in the
+    // past, which the publish engine would fire on its next tick. Block it.
+    if (combined.getTime() <= Date.now()) {
+      setError('Pick a time in the future.');
+      return;
+    }
+    setError(null);
     onSchedule(combined);
     setOpen(false);
   }
@@ -495,7 +868,15 @@ function ScheduleButton({ disabled, onSchedule }: ScheduleButtonProps): React.JS
       <PopoverContent className="w-auto" align="end">
         <div className="space-y-3">
           <Calendar mode="single" selected={date} onSelect={setDate} disabled={{ before: new Date() }} />
-          <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+          <Input
+            type="time"
+            value={time}
+            onChange={(e) => {
+              setTime(e.target.value);
+              setError(null);
+            }}
+          />
+          {error && <p className="text-xs text-danger">{error}</p>}
           <Button className="w-full" onClick={confirm} disabled={!date}>
             Confirm Schedule
           </Button>

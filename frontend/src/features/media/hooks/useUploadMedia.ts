@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { extractErrorMessage } from '@/core/api/extractErrorMessage';
 import { uploadMedia } from '../api/media.api';
 import { mediaKeys } from './mediaKeys';
 
@@ -24,8 +25,10 @@ export function useUploadMedia() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: mediaKeys.lists() });
     },
-    onError: () => {
-      toast.error('Upload failed. Please try again.');
+    onError: (error) => {
+      // Surface the backend's reason (e.g. "Image exceeds the 10MB upload
+      // limit.") instead of a generic message.
+      toast.error(extractErrorMessage(error, 'Upload failed. Please try again.'));
     },
   });
 }

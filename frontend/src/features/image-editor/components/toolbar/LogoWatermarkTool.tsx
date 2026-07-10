@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { FabricImage, Textbox } from 'fabric';
+import { toast } from 'sonner';
 import { ImagePlus, Type } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
+import { toEditorSrc } from '../../imageSrc';
 import type { Canvas, FabricObject } from 'fabric';
 
 interface LogoWatermarkToolProps {
@@ -34,7 +36,9 @@ export function LogoWatermarkTool({
     if (!canvas || !brandLogoUrl) return;
     setIsInserting(true);
     try {
-      const logo = await FabricImage.fromURL(brandLogoUrl, { crossOrigin: 'anonymous' });
+      // Load via the same-origin proxy (no crossOrigin) so adding a remote
+      // brand logo doesn't taint the canvas and break export.
+      const logo = await FabricImage.fromURL(toEditorSrc(brandLogoUrl));
 
       const canvasWidth = canvas.getWidth();
       const canvasHeight = canvas.getHeight();
@@ -55,6 +59,11 @@ export function LogoWatermarkTool({
       canvas.setActiveObject(logo);
       canvas.requestRenderAll();
       onCommit();
+    } catch {
+      // fromURL rejects on a bad URL / network / CORS failure — surface it
+      // instead of letting it become an unhandled promise rejection with no
+      // feedback (the user clicked "Add logo" and nothing happened).
+      toast.error('Could not add the brand logo. Check that the logo image is accessible.');
     } finally {
       setIsInserting(false);
     }

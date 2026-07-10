@@ -1,8 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { extractErrorMessage } from '@/core/api/extractErrorMessage';
 import { deleteBrand } from '../api/brand.api';
 import { brandKeys } from './brandKeys';
 import { useActiveBrandStore } from '../store/activeBrandStore';
+import type { Brand } from '../schemas/brand.types';
 
 export function useDeleteBrand() {
   const queryClient = useQueryClient();
@@ -15,13 +17,18 @@ export function useDeleteBrand() {
 
       const { activeBrandId, setActiveBrandId } = useActiveBrandStore.getState();
       if (activeBrandId === brandId) {
-        setActiveBrandId(null);
+        // Don't leave the app in a "no brand selected" limbo when other brands
+        // remain — re-point the active brand at the first survivor (or null
+        // only when this was the last brand). Read the just-refreshed list.
+        const lists = queryClient.getQueriesData<Brand[]>({ queryKey: brandKeys.lists() });
+        const remaining = lists.flatMap(([, brands]) => brands ?? []).filter((b) => b._id !== brandId);
+        setActiveBrandId(remaining[0]?._id ?? null);
       }
 
       toast.success('Brand deleted');
     },
-    onError: () => {
-      toast.error('Could not delete brand. Please try again.');
+    onError: (error) => {
+      toast.error(extractErrorMessage(error, 'Could not delete brand. Please try again.'));
     },
   });
 }

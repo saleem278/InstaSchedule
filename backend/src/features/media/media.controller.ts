@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { asyncHandler } from '../../core/middleware/asyncHandler';
 import { sendSuccess } from '../../core/utils/apiResponse';
 import { ValidationError } from '../../core/errors/AppError';
+import { config } from '../../config/env';
 import * as mediaService from './media.service';
 import {
   CreateCollectionInput,
@@ -63,6 +64,72 @@ export const favoriteAsset = asyncHandler(async (req: Request, res: Response) =>
   const assetId = req.params.assetId!;
   const asset = await mediaService.toggleFavorite(assetId, userId);
   sendSuccess(res, asset);
+});
+
+/**
+ * Streams a remote image back through THIS origin so the browser image editor
+ * can load it CORS-clean (a cross-origin image, even loaded with
+ * crossOrigin='anonymous', taints the canvas and makes toDataURL/toBlob throw
+ * if the source host doesn't send permissive CORS headers — which pollinations
+ * does not reliably do).
+ *
+ * SSRF-guarded: only fetches from an allowlist of known image hosts
+ * (pollinations, Cloudinary) plus the app's own SERVER_URL — never an
+ * arbitrary user-supplied host. Requires auth (mounted under the media router).
+ */
+const PROXY_ALLOWED_HOSTS = ['image.pollinations.ai', 'res.cloudinary.com'];
+const PROXY_MAX_BYTES = 15 * 1024 * 1024;
+const PROXY_TIMEOUT_MS = 20_000;
+
+function isProxyableUrl(raw: string): URL | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+  const host = url.hostname.toLowerCase();
+  if (PROXY_ALLOWED_HOSTS.includes(host)) return url;
+  // Also allow the app's own configured origin (serves /uploads).
+  if (config.SERVER_URL) {
+    try {
+      if (host === new URL(config.SERVER_URL).hostname.toLowerCase()) return url;
+    } catch {
+      /* ignore malformed SERVER_URL */
+    }
+  }
+  return null;
+}
+
+export const proxyImage = asyncHandler(async (req: Request, res: Response) => {
+  const rawUrl = typeof req.query.url === 'string' ? req.query.url : '';
+  const url = isProxyableUrl(rawUrl);
+  if (!url) {
+    throw new ValidationError('Image URL is not allowed for proxying.');
+  }
+
+  let upstream: globalThis.Response;
+  try {
+    upstream = await fetch(url.toString(), { signal: AbortSignal.timeout(PROXY_TIMEOUT_MS) });
+  } catch {
+    throw new ValidationError('Could not fetch the source image.');
+  }
+
+  const contentType = upstream.headers.get('content-type') ?? '';
+  if (!upstream.ok || !contentType.startsWith('image/')) {
+    throw new ValidationError('Source did not return a valid image.');
+  }
+
+  const buffer = Buffer.from(await upstream.arrayBuffer());
+  if (buffer.length === 0 || buffer.length > PROXY_MAX_BYTES) {
+    throw new ValidationError('Source image is empty or too large to proxy.');
+  }
+
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.send(buffer);
 });
 
 // ---- Collections ----

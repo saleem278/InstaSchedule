@@ -9,6 +9,16 @@
 
     const GRAPH_BASE = 'https://graph.facebook.com';
 
+    // Meta creates the media container asynchronously (it fetches image_url
+    // server-side). Publishing before it reaches FINISHED fails with subcode
+    // 9007 ("Media ID is not available"). Poll status_code with bounded backoff.
+    const CONTAINER_POLL_MAX_ATTEMPTS = 10;
+    const CONTAINER_POLL_INTERVAL_MS = 2_000;
+
+    function sleep(ms: number): Promise<void> {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
     /**
      * True if the host is an IPv4/IPv6 loopback or private (RFC1918 / link-local /
      * unique-local) address — none of which Meta's servers can fetch from. Guards
@@ -62,6 +72,7 @@
         this.assertPublicHttpsUrl(input.imageUrl);
 
         const creationId = await this.createMediaContainer(input);
+        await this.waitForContainerReady(creationId, input.accessToken);
         const mediaId = await this.publishContainer(input, creationId);
         const permalink = await this.fetchPermalink(mediaId, input.accessToken);
 
@@ -108,6 +119,43 @@
           throw new ExternalServiceError('Instagram did not return a media container id');
         }
         return data.id;
+      }
+
+      /**
+       * Polls the container's `status_code` until it's FINISHED (ready to
+       * publish), or throws on ERROR / EXPIRED / timeout. Meta fetches the image
+       * asynchronously after container creation, so publishing immediately can
+       * race and fail with subcode 9007; this makes publish reliable.
+       */
+      private async waitForContainerReady(creationId: string, accessToken: string): Promise<void> {
+        for (let attempt = 0; attempt < CONTAINER_POLL_MAX_ATTEMPTS; attempt += 1) {
+          const url = `${this.apiRoot}/${creationId}?fields=status_code,status&access_token=${encodeURIComponent(accessToken)}`;
+          let statusCode: string | undefined;
+          try {
+            const response = await fetch(url);
+            if (response.ok) {
+              const data = (await response.json()) as { status_code?: string; status?: string };
+              statusCode = data.status_code;
+            }
+          } catch (error) {
+            // Transient read error — log and retry within the attempt budget.
+            logger.warn({ err: error, creationId }, 'Failed to read Instagram container status; will retry');
+          }
+
+          if (statusCode === 'FINISHED') return;
+          if (statusCode === 'ERROR' || statusCode === 'EXPIRED') {
+            throw new ExternalServiceError(
+              `Instagram could not process the image (container status: ${statusCode}). Check that the image URL is publicly reachable and a supported format.`
+            );
+          }
+
+          // IN_PROGRESS (or unknown/transient) — wait and poll again.
+          await sleep(CONTAINER_POLL_INTERVAL_MS);
+        }
+
+        throw new ExternalServiceError(
+          'Instagram did not finish processing the image in time. Please try publishing again in a moment.'
+        );
       }
 
       private async publishContainer(input: PublishImagePostInput, creationId: string): Promise<string> {
