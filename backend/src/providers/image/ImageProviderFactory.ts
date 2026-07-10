@@ -4,6 +4,7 @@ import { PollinationsProvider } from './PollinationsProvider';
 import { PlaceholderProvider } from './PlaceholderProvider';
 import { CloudflareWorkersProvider } from './CloudflareWorkersProvider';
 import { GeminiImageProvider } from './GeminiImageProvider';
+import { HuggingFaceProvider } from './HuggingFaceProvider';
 
 // Future providers to add here as they are implemented:
 // OpenAI (DALL-E), Flux, Ideogram, Leonardo, Stability.
@@ -15,6 +16,8 @@ export function getImageProvider(): ImageProvider {
       return new CloudflareWorkersProvider();
     case 'gemini':
       return new GeminiImageProvider();
+    case 'huggingface':
+      return new HuggingFaceProvider();
     case 'placeholder':
       return new PlaceholderProvider();
     default:
@@ -31,6 +34,8 @@ export function createImageProvider(name?: string): ImageProvider {
       return new CloudflareWorkersProvider();
     case 'gemini':
       return new GeminiImageProvider();
+    case 'huggingface':
+      return new HuggingFaceProvider();
     case 'placeholder':
       return new PlaceholderProvider();
     default:

@@ -60,6 +60,9 @@ const envSchema = z.object({
   CLOUDFLARE_WORKERS_AI_BASE_URL: z.string().url().optional(),
   CLOUDFLARE_WORKERS_AI_API_KEY: z.string().optional(),
 
+  HF_API_KEY: z.string().optional(),
+  HF_IMAGE_MODEL: z.string().default('black-forest-labs/FLUX.1-schnell'),
+
   // --- Instagram publishing (Meta Graph API) ---
   // Publisher selection: 'graph' calls the real Meta Graph API; 'mock'
   // simulates a successful publish without any external call (useful for
@@ -90,6 +93,7 @@ export const config = {
     openaiEnabled: Boolean(env.OPENAI_API_KEY),
     geminiEnabled: Boolean(env.GEMINI_API_KEY),
     cloudflareWorkersEnabled: Boolean(env.CLOUDFLARE_WORKERS_AI_BASE_URL && env.CLOUDFLARE_WORKERS_AI_API_KEY),
+    huggingFaceEnabled: Boolean(env.HF_API_KEY),
   },
 };
 

@@ -43,6 +43,7 @@ export async function listProviders(_req: Request, res: Response) {
       available: config.features.cloudflareWorkersEnabled,
     },
     { name: 'gemini', displayName: 'Gemini', available: config.features.geminiEnabled },
+    { name: 'huggingface', displayName: 'Hugging Face', available: config.features.huggingFaceEnabled },
     { name: 'placeholder', displayName: 'Placeholder', available: true },
   ];
 

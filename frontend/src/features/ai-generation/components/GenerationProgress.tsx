@@ -61,6 +61,17 @@ const IMAGE_PROVIDER_MODELS: Record<string, { label: string; value: string }[]> 
     { label: 'Default Model', value: '' },
     { label: 'Flux', value: 'flux' },
   ],
+  huggingface: [
+    { label: 'FLUX.1 Schnell (Default)', value: 'black-forest-labs/FLUX.1-schnell' },
+    { label: 'Stable Diffusion XL 1.0', value: 'stabilityai/stable-diffusion-xl-base-1.0' },
+    { label: 'Stable Diffusion 3 Medium', value: 'stabilityai/stable-diffusion-3-medium-diffusers' },
+    { label: 'Openjourney', value: 'prompthero/openjourney' },
+  ],
+  'cloudflare-workers': [
+    { label: 'SDXL Lightning (Default)', value: '@cf/bytedance/stable-diffusion-xl-lightning' },
+    { label: 'Stable Diffusion XL 1.0', value: '@cf/stabilityai/stable-diffusion-xl-base-1.0' },
+    { label: 'Dreamshaper 8 LCM', value: '@cf/lykon/dreamshaper-8-lcm' },
+  ],
 };
 
 const STEPS: Step[] = [

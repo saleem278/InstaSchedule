@@ -58,7 +58,13 @@ export class CloudflareWorkersProvider implements ImageProvider {
 
     const width = options?.width ?? DEFAULT_WIDTH;
     const height = options?.height ?? DEFAULT_HEIGHT;
-    const requestUrl = config.CLOUDFLARE_WORKERS_AI_BASE_URL;
+    const model = options?.model ?? '@cf/bytedance/stable-diffusion-xl-lightning';
+
+    let requestUrl = config.CLOUDFLARE_WORKERS_AI_BASE_URL;
+    if (requestUrl.endsWith('/ai/run') || requestUrl.endsWith('/ai/run/')) {
+      const baseUrlClean = requestUrl.endsWith('/') ? requestUrl.slice(0, -1) : requestUrl;
+      requestUrl = `${baseUrlClean}/${model}`;
+    }
 
     const requestBody = JSON.stringify({
       prompt,
