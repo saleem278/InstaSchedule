@@ -104,6 +104,9 @@ export async function update(id: string, userId: string, data: UpdateProjectInpu
   if (data.imageAssetIds !== undefined) {
     update.imageAssets = data.imageAssetIds;
   }
+  if (data.music !== undefined) {
+    update.music = data.music;
+  }
 
   return ProjectModel.findOneAndUpdate({ _id: id, user: userId }, { $set: update }, { new: true })
     .populate('imageAsset', 'url')

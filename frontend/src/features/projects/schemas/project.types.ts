@@ -20,6 +20,13 @@ export interface ProjectSchedule {
   lastPublishError?: string | null;
 }
 
+export interface ProjectMusic {
+  audioAssetId: string;
+  title: string;
+  artistName: string;
+  previewUrl?: string | null;
+}
+
 export interface PublishProjectResult {
   project: Project;
   mediaId: string;
@@ -46,6 +53,7 @@ export interface Project {
   imageAsset: PopulatedImageAsset | null;
   imageAssets: PopulatedImageAsset[];
   schedule: ProjectSchedule;
+  music?: ProjectMusic | null;
   activeGeneration: string | null;
   createdAt: string;
   updatedAt: string;
@@ -64,6 +72,7 @@ export interface UpdateProjectPayload {
   /** Point the project at a different MediaAsset (e.g. after editing the image). */
   imageAssetId?: string;
   imageAssetIds?: string[];
+  music?: ProjectMusic | null;
 }
 
 export interface UpdateProjectStatusPayload {

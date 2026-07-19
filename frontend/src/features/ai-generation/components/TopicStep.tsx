@@ -4,6 +4,14 @@ import { Sparkles } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/core/utils/cn';
+import { usePrompts } from '@/features/prompts/hooks/usePrompts';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const EXAMPLE_TOPICS = [
   'Announce our new summer collection launch',
@@ -31,6 +39,7 @@ export function TopicStep({
   onChangePostType,
   onSubmit,
 }: TopicStepProps): React.JSX.Element {
+  const { data: prompts = [] } = usePrompts();
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
 
   useEffect(() => {
@@ -60,6 +69,32 @@ export function TopicStep({
           Describe your topic in a sentence or two — we&apos;ll write the caption, hashtags, and generate an image.
         </p>
       </div>
+
+      {prompts.length > 0 && (
+        <div className="flex flex-col sm:flex-row items-center gap-2 bg-surfaceMuted/20 p-1.5 px-3 rounded-full border border-border/40">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-textSecondary">Use Saved Template</span>
+          <Select
+            onValueChange={(val) => {
+              const selected = prompts.find((p) => p._id === val);
+              if (selected) {
+                onChangeTopic(selected.promptText);
+                onChangePostType(selected.postType);
+              }
+            }}
+          >
+            <SelectTrigger className="w-[200px] h-7 text-xs bg-surface border-border/60 rounded-full">
+              <SelectValue placeholder="Choose a template..." />
+            </SelectTrigger>
+            <SelectContent className="max-w-[280px]">
+              {prompts.map((p) => (
+                <SelectItem key={p._id} value={p._id} className="text-xs truncate">
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="relative w-full max-w-xl">
         <Textarea

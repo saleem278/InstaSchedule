@@ -34,7 +34,7 @@ const TEXT_PROVIDER_MODELS: Record<string, { label: string; value: string }[]> =
 const IMAGE_PROVIDER_MODELS: Record<string, { label: string; value: string }[]> = {
   gemini: [
     { label: 'Imagen 4.0 Generate (Default)', value: 'imagen-4.0-generate-001' },
-    { label: 'Imagen 3.0 Generate', value: 'imagen-3.0-generate-002' },
+    { label: 'Gemini 3.1 Flash Image', value: 'gemini-3.1-flash-image' },
   ],
   pollinations: [
     { label: 'Default Model', value: '' },

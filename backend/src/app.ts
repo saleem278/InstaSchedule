@@ -16,6 +16,7 @@ import { generationRouter } from './features/ai-generation/generation.routes';
 import { mediaRouter } from './features/media/media.routes';
 import { schedulerRouter } from './features/scheduler/scheduler.routes';
 import { providersRouter } from './features/system/providers.routes';
+import { promptRouter } from './features/prompts/prompt.routes';
 
 export function createApp(): Express {
   const app = express();
@@ -69,6 +70,7 @@ export function createApp(): Express {
   app.use('/api/v1/providers', providersRouter);
   app.use('/api/v1/media', mediaRouter);
   app.use('/api/v1/scheduler', schedulerRouter);
+  app.use('/api/v1/prompts', promptRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

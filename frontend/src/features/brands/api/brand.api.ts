@@ -1,6 +1,7 @@
 import { apiClient } from '@/core/api/apiClient';
 import { BRAND_ENDPOINTS, MEDIA_ENDPOINTS } from '@/core/api/endpoints';
 import type { Brand, BrandPayload } from '../schemas/brand.types';
+import type { ProjectMusic } from '@/features/projects/schemas/project.types';
 
 /**
  * Brand API calls. `apiClient`'s response interceptor already unwraps the
@@ -45,4 +46,14 @@ export async function uploadBrandLogo(file: File): Promise<string> {
     })
     .then((res) => res.data);
   return asset.url;
+}
+
+export async function searchInstagramAudio(
+  brandId: string,
+  q: string,
+  type: 'music' | 'original_sound' = 'music'
+): Promise<ProjectMusic[]> {
+  return apiClient
+    .get<ProjectMusic[]>(`/brands/${brandId}/instagram-audio`, { params: { q, type } })
+    .then((res) => res.data);
 }

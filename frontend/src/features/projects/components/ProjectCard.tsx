@@ -104,8 +104,13 @@ export function ProjectCard({ project }: ProjectCardProps): React.JSX.Element {
         <DialogContent onClick={(e) => e.stopPropagation()}>
           <DialogHeader>
             <DialogTitle>Delete project</DialogTitle>
-            <DialogDescription>
-              This will permanently delete "{project.topic}" and its generated content. This cannot be undone.
+            <DialogDescription className="space-y-3 pt-2 text-left">
+              <span className="block text-xs leading-relaxed text-textSecondary">
+                This will permanently delete this project and its generated content. This cannot be undone.
+              </span>
+              <div className="max-h-36 overflow-y-auto rounded-md bg-backgroundMuted p-2 text-[11px] leading-relaxed font-mono text-textSecondary border border-border/40 scrollbar-none">
+                {project.topic}
+              </div>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

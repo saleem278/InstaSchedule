@@ -3,6 +3,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { useCurrentUser } from '@/features/auth/hooks/useCurrentUser';
+import { PromptsManagement } from '@/features/prompts/components/PromptsManagement';
 
 function initials(name: string): string {
   return name
@@ -15,7 +16,7 @@ function initials(name: string): string {
 
 /**
  * Minimal account settings page (distinct from per-brand Brand Settings).
- * Shows the signed-in user's profile info and a sign-out action.
+ * Shows the signed-in user's profile info, saved prompt templates, and a sign-out action.
  */
 export function SettingsPage(): React.JSX.Element {
   const { user } = useCurrentUser();
@@ -45,6 +46,8 @@ export function SettingsPage(): React.JSX.Element {
           </Button>
         </CardContent>
       </Card>
+
+      <PromptsManagement />
     </div>
   );
 }

@@ -56,7 +56,43 @@ export class GeminiImageProvider implements ImageProvider {
 
     const width = options?.width ?? DEFAULT_WIDTH;
     const height = options?.height ?? DEFAULT_HEIGHT;
-    const model = options?.model ?? config.GEMINI_IMAGE_MODEL ?? DEFAULT_MODEL;
+    let model = options?.model ?? config.GEMINI_IMAGE_MODEL ?? DEFAULT_MODEL;
+    if (model === 'imagen-3.0-generate-002') {
+      model = 'imagen-4.0-generate-001';
+    }
+
+    if (model.includes('gemini')) {
+      // Option 2: Multimodal generateContent with responseModalities: ['IMAGE']
+      try {
+        const response = await this.getClient().models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            responseModalities: ['IMAGE'],
+          },
+        });
+
+        const part = response.candidates?.[0]?.content?.parts?.[0];
+        const base64 = part?.inlineData?.data;
+        const mimeType = part?.inlineData?.mimeType ?? 'image/png';
+
+        if (!base64) {
+          throw new ExternalServiceError('Gemini returned an empty image result', {
+            cause: { model, prompt, response },
+          });
+        }
+
+        return {
+          url: `data:${mimeType};base64,${base64}`,
+          buffer: Buffer.from(base64, 'base64'),
+          provider: this.name,
+        };
+      } catch (error) {
+        throw this.handleError(error, model, prompt, width, height);
+      }
+    }
+
+    // Option 1: Legacy generateImages for Imagen models
     const imageSize = getImageSize(width, height);
     const aspectRatio = getAspectRatio(width, height);
 
@@ -91,30 +127,34 @@ export class GeminiImageProvider implements ImageProvider {
         provider: this.name,
       };
     } catch (error) {
-      const status = (error as any)?.statusCode ?? (error as any)?.status ?? undefined;
-      const details = {
-        status,
-        model,
-        prompt,
-        width,
-        height,
-        error: (error as any)?.message ?? String(error),
-      };
-
-      if (status === 401) {
-        throw new ExternalServiceError('Gemini unauthorized: API key missing or invalid', { cause: details });
-      }
-      if (status === 402) {
-        throw new ExternalServiceError('Gemini billing error: insufficient credits or account issue', { cause: details });
-      }
-      if (status === 429) {
-        throw new ExternalServiceError('Gemini rate-limited', { cause: details });
-      }
-      if (typeof status === 'number' && status >= 500) {
-        throw new ExternalServiceError('Gemini returned a server error', { cause: details });
-      }
-
-      throw new ExternalServiceError('Failed to generate image via Gemini', { cause: details });
+      throw this.handleError(error, model, prompt, width, height);
     }
+  }
+
+  private handleError(error: any, model: string, prompt: string, width: number, height: number): Error {
+    const status = error?.statusCode ?? error?.status ?? undefined;
+    const details = {
+      status,
+      model,
+      prompt,
+      width,
+      height,
+      error: error?.message ?? String(error),
+    };
+
+    if (status === 401) {
+      return new ExternalServiceError('Gemini unauthorized: API key missing or invalid', { cause: details });
+    }
+    if (status === 402) {
+      return new ExternalServiceError('Gemini billing error: insufficient credits or account issue', { cause: details });
+    }
+    if (status === 429) {
+      return new ExternalServiceError('Gemini rate-limited', { cause: details });
+    }
+    if (typeof status === 'number' && status >= 500) {
+      return new ExternalServiceError('Gemini returned a server error', { cause: details });
+    }
+
+    return new ExternalServiceError('Failed to generate image via Gemini', { cause: details });
   }
 }

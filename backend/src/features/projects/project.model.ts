@@ -24,6 +24,13 @@ export interface ProjectSchedule {
   lastPublishError?: string | null;
 }
 
+export interface ProjectMusic {
+  audioAssetId: string;
+  title: string;
+  artistName: string;
+  previewUrl?: string | null;
+}
+
 export interface ProjectDocument extends Document {
   _id: Types.ObjectId;
   brand: Types.ObjectId;
@@ -35,6 +42,7 @@ export interface ProjectDocument extends Document {
   imageAsset: Types.ObjectId | null;
   imageAssets: Types.ObjectId[];
   schedule: ProjectSchedule;
+  music?: ProjectMusic | null;
   activeGeneration: Types.ObjectId | null;
   createdAt: Date;
   updatedAt: Date;
@@ -63,6 +71,16 @@ const projectScheduleSchema = new Schema<ProjectSchedule>(
   { _id: false }
 );
 
+const projectMusicSchema = new Schema<ProjectMusic>(
+  {
+    audioAssetId: { type: String, required: true },
+    title: { type: String, required: true },
+    artistName: { type: String, required: true },
+    previewUrl: { type: String, default: null },
+  },
+  { _id: false }
+);
+
 const projectSchema = new Schema<ProjectDocument>(
   {
     brand: { type: Schema.Types.ObjectId, ref: 'Brand', required: true, index: true },
@@ -86,6 +104,7 @@ const projectSchema = new Schema<ProjectDocument>(
       default: [],
     },
     schedule: { type: projectScheduleSchema, default: () => ({}) },
+    music: { type: projectMusicSchema, default: null },
     activeGeneration: { type: Schema.Types.ObjectId, ref: 'Generation', default: null },
   },
   { timestamps: true }

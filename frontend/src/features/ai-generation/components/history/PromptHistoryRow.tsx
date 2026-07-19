@@ -252,8 +252,13 @@ export function PromptHistoryRow({ entry }: PromptHistoryRowProps): React.JSX.El
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete project</DialogTitle>
-            <DialogDescription>
-              This will permanently delete "{entry.inputTopic}" and its generated content. This cannot be undone.
+            <DialogDescription className="space-y-3 pt-2 text-left">
+              <span className="block text-xs leading-relaxed text-textSecondary">
+                This will permanently delete this project and its generated content. This cannot be undone.
+              </span>
+              <div className="max-h-36 overflow-y-auto rounded-md bg-backgroundMuted p-2 text-[11px] leading-relaxed font-mono text-textSecondary border border-border/40 scrollbar-none">
+                {entry.inputTopic}
+              </div>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

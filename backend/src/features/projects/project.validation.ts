@@ -14,6 +14,13 @@ const contentSchema = z.object({
   imagePrompt: z.string().optional(),
 });
 
+const musicSchema = z.object({
+  audioAssetId: z.string().trim().min(1, 'audioAssetId is required'),
+  title: z.string().trim().min(1, 'title is required'),
+  artistName: z.string().trim().min(1, 'artistName is required'),
+  previewUrl: z.string().trim().nullable().optional(),
+});
+
 export const updateProjectSchema = z.object({
   topic: z.string().trim().min(3, 'Topic must be at least 3 characters').optional(),
   content: contentSchema.optional(),
@@ -22,6 +29,7 @@ export const updateProjectSchema = z.object({
   // points the project at a different MediaAsset the user owns.
   imageAssetId: z.string().trim().min(1).optional(),
   imageAssetIds: z.array(z.string().trim().min(1)).optional(),
+  music: musicSchema.nullable().optional(),
 });
 
 const isoDateString = z

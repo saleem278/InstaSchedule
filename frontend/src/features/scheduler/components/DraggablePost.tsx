@@ -106,8 +106,13 @@ export function DraggablePost({ project, compact, draggable = true }: DraggableP
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete post</DialogTitle>
-            <DialogDescription>
-              This will permanently delete "{project.topic}" and cannot be undone.
+            <DialogDescription className="space-y-3 pt-2 text-left">
+              <span className="block text-xs leading-relaxed text-textSecondary">
+                This will permanently delete this post and cannot be undone.
+              </span>
+              <div className="max-h-36 overflow-y-auto rounded-md bg-backgroundMuted p-2 text-[11px] leading-relaxed font-mono text-textSecondary border border-border/40 scrollbar-none">
+                {project.topic}
+              </div>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

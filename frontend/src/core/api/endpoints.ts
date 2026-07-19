@@ -71,3 +71,11 @@ export const PROVIDER_ENDPOINTS = {
   list: '/providers',
 } as const;
 
+export const PROMPT_ENDPOINTS = {
+  list: '/prompts',
+  create: '/prompts',
+  detail: (id: string) => `/prompts/${id}`,
+  update: (id: string) => `/prompts/${id}`,
+  delete: (id: string) => `/prompts/${id}`,
+} as const;
+

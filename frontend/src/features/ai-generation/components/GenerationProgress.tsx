@@ -32,6 +32,7 @@ import { MediaUploadDropzone } from '@/features/media/components/MediaUploadDrop
 import type { Project } from '@/features/projects/schemas/project.types';
 import type { GenerateFullResult, RegenerableField } from '../schemas/generation.types';
 import { cn } from '@/core/utils/cn';
+import { MusicSelectionPanel } from '@/features/projects/components/MusicSelectionPanel';
 
 const TEXT_PROVIDER_MODELS: Record<string, { label: string; value: string }[]> = {
   groq: [
@@ -56,7 +57,7 @@ const TEXT_PROVIDER_MODELS: Record<string, { label: string; value: string }[]> =
 const IMAGE_PROVIDER_MODELS: Record<string, { label: string; value: string }[]> = {
   gemini: [
     { label: 'Imagen 4.0 Generate (Default)', value: 'imagen-4.0-generate-001' },
-    { label: 'Imagen 3.0 Generate', value: 'imagen-3.0-generate-002' },
+    { label: 'Gemini 3.1 Flash Image', value: 'gemini-3.1-flash-image' },
   ],
   pollinations: [
     { label: 'Default Model', value: '' },
@@ -561,11 +562,15 @@ export function GenerationProgress({
   }
 
   const isReady = phase === 'ready';
+  const isEditable = isReady && project.status !== 'published' && project.status !== 'publishing';
   // Single busy flag so all three terminal actions (Save Draft / Schedule /
   // Publish) disable together while ANY of them is in flight — prevents racing
   // status writes and double onDone() navigations.
   const actionBusy =
-    updateStatusMutation.isPending || publishMutation.isPending || updateProjectMutation.isPending;
+    updateStatusMutation.isPending ||
+    publishMutation.isPending ||
+    updateProjectMutation.isPending ||
+    project.status === 'publishing';
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -619,6 +624,7 @@ export function GenerationProgress({
                     setSelectedTextProvider(v);
                     setSelectedTextModel('');
                   }}
+                  disabled={!isEditable}
                 >
                   <SelectTrigger className="w-full mt-1 h-9">
                     <SelectValue placeholder="Text provider" />
@@ -649,6 +655,7 @@ export function GenerationProgress({
                         setSelectedTextModel(v);
                       }
                     }}
+                    disabled={!isEditable}
                   >
                     <SelectTrigger className="w-full mt-1 h-9">
                       <SelectValue placeholder="Select text model" />
@@ -671,6 +678,7 @@ export function GenerationProgress({
                         placeholder="Enter custom model ID"
                         value={selectedTextModel === ' ' ? '' : selectedTextModel}
                         onChange={(e) => setSelectedTextModel(e.target.value)}
+                        disabled={!isEditable}
                       />
                     )}
                 </div>
@@ -687,6 +695,7 @@ export function GenerationProgress({
                     setSelectedImageProvider(v);
                     setSelectedImageModel('');
                   }}
+                  disabled={!isEditable}
                 >
                   <SelectTrigger className="w-full mt-1 h-9">
                     <SelectValue placeholder="Image provider" />
@@ -717,6 +726,7 @@ export function GenerationProgress({
                         setSelectedImageModel(v);
                       }
                     }}
+                    disabled={!isEditable}
                   >
                     <SelectTrigger className="w-full mt-1 h-9">
                       <SelectValue placeholder="Select image model" />
@@ -739,6 +749,7 @@ export function GenerationProgress({
                         placeholder="Enter custom model ID"
                         value={selectedImageModel === ' ' ? '' : selectedImageModel}
                         onChange={(e) => setSelectedImageModel(e.target.value)}
+                        disabled={!isEditable}
                       />
                     )}
                 </div>
@@ -765,7 +776,7 @@ export function GenerationProgress({
             <FieldCard
               title="Caption"
               counter={`${caption.length}/2200`}
-              onRegenerate={isReady ? () => handleRegenerate('caption') : undefined}
+              onRegenerate={isEditable ? () => handleRegenerate('caption') : undefined}
               regenerating={regeneratingField === 'caption'}
               shimmer={regeneratingField === 'caption'}
             >
@@ -773,7 +784,7 @@ export function GenerationProgress({
                 value={caption}
                 onChange={(e) => setCaption(e.target.value)}
                 maxLength={2200}
-                disabled={!isReady}
+                disabled={!isEditable}
                 rows={5}
                 placeholder={isReady ? undefined : 'Writing caption…'}
               />
@@ -782,20 +793,20 @@ export function GenerationProgress({
 
           <FieldCard
             title="Call to Action"
-            onRegenerate={isReady ? () => handleRegenerate('cta') : undefined}
+            onRegenerate={isEditable ? () => handleRegenerate('cta') : undefined}
             regenerating={regeneratingField === 'cta'}
             shimmer={regeneratingField === 'cta'}
           >
-            <Input value={cta} onChange={(e) => setCta(e.target.value)} disabled={!isReady} placeholder={isReady ? undefined : 'Crafting CTA…'} />
+            <Input value={cta} onChange={(e) => setCta(e.target.value)} disabled={!isEditable} placeholder={isReady ? undefined : 'Crafting CTA…'} />
           </FieldCard>
 
           <FieldCard
             title="Hashtags"
-            onRegenerate={isReady ? () => handleRegenerate('hashtags') : undefined}
+            onRegenerate={isEditable ? () => handleRegenerate('hashtags') : undefined}
             regenerating={regeneratingField === 'hashtags'}
             shimmer={regeneratingField === 'hashtags'}
             extraAction={
-              isReady ? (
+              isEditable ? (
                 <Button
                   type="button"
                   variant="ghost"
@@ -809,14 +820,14 @@ export function GenerationProgress({
               ) : undefined
             }
           >
-            <HashtagChipInput hashtags={hashtags} onChange={setHashtags} disabled={!isReady} />
+            <HashtagChipInput hashtags={hashtags} onChange={setHashtags} disabled={!isEditable} />
           </FieldCard>
 
           <FieldCard title="Alt Text">
             <Textarea
               value={altText}
               onChange={(e) => setAltText(e.target.value)}
-              disabled={!isReady}
+              disabled={!isEditable}
               rows={3}
               placeholder={isReady ? undefined : 'Writing alt text…'}
             />
@@ -824,7 +835,7 @@ export function GenerationProgress({
 
           <FieldCard
             title="Image Prompt"
-            onRegenerate={isReady ? () => handleRegenerate('image') : undefined}
+            onRegenerate={isEditable ? () => handleRegenerate('image') : undefined}
             regenerating={regeneratingField === 'image' || imageJobInFlight}
             shimmer={regeneratingField === 'image' || imageJobInFlight}
           >
@@ -832,7 +843,7 @@ export function GenerationProgress({
               <Textarea
                 value={imagePrompt}
                 onChange={(e) => setImagePrompt(e.target.value)}
-                disabled={!isReady}
+                disabled={!isEditable}
                 rows={3}
                 placeholder={isReady ? undefined : 'Generating image prompt…'}
               />
@@ -842,7 +853,7 @@ export function GenerationProgress({
                   variant="outline"
                   size="sm"
                   className="flex-1"
-                  disabled={!isReady || regeneratingField === 'image' || imageJobInFlight}
+                  disabled={!isEditable || regeneratingField === 'image' || imageJobInFlight}
                   onClick={() => handleRegenerate('image')}
                 >
                   <ImageIcon className="h-3.5 w-3.5" />
@@ -855,12 +866,17 @@ export function GenerationProgress({
                   size="sm"
                   className="flex-1"
                   onClick={() => setUploadOpen(true)}
+                  disabled={!isEditable}
                 >
                   Upload Image
                 </Button>
               </div>
             </div>
           </FieldCard>
+
+          {isReady && (
+            <MusicSelectionPanel project={project} />
+          )}
 
           {project.postType === 'carousel' && (
             <FieldCard title={`Carousel Slides (${imageAssets.length}/10)`}>
@@ -888,7 +904,7 @@ export function GenerationProgress({
                           e.stopPropagation();
                           handleRemoveSlide(idx);
                         }}
-                        disabled={imageAssets.length <= 2}
+                        disabled={imageAssets.length <= 2 || !isEditable}
                         className="absolute right-1 top-1 hidden rounded bg-danger/80 p-1 text-white hover:bg-danger group-hover:block disabled:opacity-50"
                         title="Remove slide"
                       >
@@ -897,7 +913,7 @@ export function GenerationProgress({
                       <div className="absolute inset-x-0 bottom-0 flex h-6 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
                         <button
                           type="button"
-                          disabled={idx === 0}
+                          disabled={idx === 0 || !isEditable}
                           onClick={(e) => {
                             e.stopPropagation();
                             handleMoveSlide(idx, 'left');
@@ -909,7 +925,7 @@ export function GenerationProgress({
                         </button>
                         <button
                           type="button"
-                          disabled={idx === imageAssets.length - 1}
+                          disabled={idx === imageAssets.length - 1 || !isEditable}
                           onClick={(e) => {
                             e.stopPropagation();
                             handleMoveSlide(idx, 'right');
@@ -922,7 +938,7 @@ export function GenerationProgress({
                       </div>
                     </div>
                   ))}
-                  {imageAssets.length < 10 && (
+                  {imageAssets.length < 10 && isEditable && (
                     <button
                       type="button"
                       onClick={() => setUploadOpen(true)}
@@ -956,36 +972,48 @@ export function GenerationProgress({
 
       {/* Sticky bottom action bar */}
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border bg-surface px-4 py-3 sm:px-8">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span>
-              <Button
-                variant="outline"
-                onClick={() => setIsEditingImage(true)}
-                disabled={!isReady || !imageUrl || !imageReady}
-              >
-                <ImageIcon className="h-4 w-4" />
-                Edit Image
-              </Button>
-            </span>
-          </TooltipTrigger>
-          {(!imageUrl || !imageReady) && <TooltipContent>Generate an image first</TooltipContent>}
-        </Tooltip>
+        {project.status === 'published' ? (
+          <Button variant="accent-glow" onClick={onDone}>
+            Done
+          </Button>
+        ) : (
+          <>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsEditingImage(true)}
+                    disabled={!isEditable || !imageUrl || !imageReady}
+                  >
+                    <ImageIcon className="h-4 w-4" />
+                    Edit Image
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {(!imageUrl || !imageReady) && <TooltipContent>Generate an image first</TooltipContent>}
+            </Tooltip>
 
-        <Button variant="secondary" onClick={handleSaveDraft} disabled={!isReady || actionBusy}>
-          {updateStatusMutation.isPending ? 'Saving…' : 'Save as Draft'}
-        </Button>
+            <Button variant="secondary" onClick={handleSaveDraft} disabled={!isEditable || actionBusy}>
+              {updateStatusMutation.isPending ? 'Saving…' : 'Save as Draft'}
+            </Button>
 
-        <ScheduleButton disabled={!isReady || actionBusy} onSchedule={handleSchedule} />
+            <ScheduleButton
+              disabled={!isEditable || actionBusy}
+              onSchedule={handleSchedule}
+              isScheduled={project.status === 'scheduled' || project.status === 'failed' || !!project.schedule.scheduledAt}
+            />
 
-        <Button
-          variant="accent-glow"
-          onClick={handlePublishNow}
-          disabled={!isReady || !imageUrl || !imageReady || actionBusy}
-        >
-          <Send className="h-4 w-4" />
-          {publishMutation.isPending ? 'Publishing…' : 'Publish now'}
-        </Button>
+            <Button
+              variant="accent-glow"
+              onClick={handlePublishNow}
+              disabled={!isEditable || !imageUrl || !imageReady || actionBusy}
+            >
+              <Send className="h-4 w-4" />
+              {publishMutation.isPending || project.status === 'publishing' ? 'Publishing…' : 'Publish now'}
+            </Button>
+          </>
+        )}
       </div>
 
       {isEditingImage && imageUrl && (
@@ -1020,9 +1048,10 @@ export function GenerationProgress({
 interface ScheduleButtonProps {
   disabled?: boolean;
   onSchedule: (date: Date) => void;
+  isScheduled?: boolean;
 }
 
-function ScheduleButton({ disabled, onSchedule }: ScheduleButtonProps): React.JSX.Element {
+function ScheduleButton({ disabled, onSchedule, isScheduled }: ScheduleButtonProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [time, setTime] = useState('09:00');
@@ -1051,7 +1080,7 @@ function ScheduleButton({ disabled, onSchedule }: ScheduleButtonProps): React.JS
       <PopoverTrigger asChild>
         <Button variant="accent-glow" disabled={disabled}>
           <CalendarClock className="h-4 w-4" />
-          Schedule
+          {isScheduled ? 'Reschedule' : 'Schedule'}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto" align="end">
@@ -1067,7 +1096,7 @@ function ScheduleButton({ disabled, onSchedule }: ScheduleButtonProps): React.JS
           />
           {error && <p className="text-xs text-danger">{error}</p>}
           <Button className="w-full" onClick={confirm} disabled={!date}>
-            Confirm Schedule
+            {isScheduled ? 'Confirm Reschedule' : 'Confirm Schedule'}
           </Button>
         </div>
       </PopoverContent>

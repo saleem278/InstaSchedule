@@ -66,10 +66,24 @@ export async function processImageGenerationJob(job: { data: GenerateImageJobDat
 
       if (shouldFallback) {
         try {
-          const fallback = createImageProvider('placeholder');
-          usedProviderName = fallback.name;
-          generatedImage = await fallback.generate(prompt, options as any);
-          logger.info({ generationId, fallback: usedProviderName }, 'Used fallback image provider');
+          // First attempt fallback with a free public provider like Pollinations to try and render a real image
+          const fallbackName = providerInstance.name === 'pollinations' ? 'huggingface' : 'pollinations';
+          const fallbackOptions = options ? { ...options } : {};
+          if ('model' in fallbackOptions) {
+            delete fallbackOptions.model;
+          }
+          try {
+            const fallbackReal = createImageProvider(fallbackName);
+            usedProviderName = fallbackReal.name;
+            generatedImage = await fallbackReal.generate(prompt, fallbackOptions as any);
+            logger.info({ generationId, fallback: usedProviderName }, 'Used fallback real image provider');
+          } catch (realFbErr) {
+            logger.warn({ err: realFbErr, generationId, fallbackName }, 'Fallback real image provider failed, using placeholder');
+            const fallback = createImageProvider('placeholder');
+            usedProviderName = fallback.name;
+            generatedImage = await fallback.generate(prompt, fallbackOptions as any);
+            logger.info({ generationId, fallback: usedProviderName }, 'Used fallback placeholder image provider');
+          }
         } catch (fbErr) {
           // fallback also failed — rethrow original to be handled below
           logger.error({ err: fbErr, generationId }, 'Fallback image provider failed');
