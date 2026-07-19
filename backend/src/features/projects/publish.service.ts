@@ -47,55 +47,52 @@ export interface PublishOutcome {
  * marks the project published. Throws (without recording an error) on any
  * failure — the caller decides how to record it (immediate vs scheduled path).
  */
+async function ensurePublicUrl(
+  url: string,
+  assetId: string,
+  project: any
+): Promise<string> {
+  if (!url.startsWith('/uploads/')) {
+    return url;
+  }
+
+  if (!config.features.cloudinaryEnabled) {
+    if (!config.SERVER_URL) {
+      throw new ValidationError(
+        'Local image assets require SERVER_URL to publish. Set SERVER_URL in your environment.'
+      );
+    }
+    return `${config.SERVER_URL.replace(/\/+$/, '')}${url}`;
+  }
+
+  const localPath = path.join(
+    path.resolve(__dirname, '../../../../uploads'),
+    url.replace(/^\/uploads\//, '')
+  );
+  let buffer: Buffer;
+  try {
+    buffer = await fs.readFile(localPath);
+  } catch (error) {
+    logger.warn({ err: error, url, localPath }, 'Local uploaded image file not found for publish');
+    throw new ValidationError('Local uploaded image file not found for publish.');
+  }
+
+  const cloudinaryProvider = new CloudinaryStorageProvider();
+  const uploadResult = await cloudinaryProvider.upload(buffer, path.basename(localPath), project.user.toString());
+
+  await mediaRepository.update(assetId, project.user.toString(), { url: uploadResult.url });
+  return uploadResult.url;
+}
+
+/**
+ * Core publish: validates preconditions, calls the Instagram publisher, and
+ * marks the project published. Throws (without recording an error) on any
+ * failure — the caller decides how to record it (immediate vs scheduled path).
+ */
 async function performPublish(projectId: string, userId: string): Promise<PublishOutcome> {
   const project = await projectRepository.findByIdForUser(projectId, userId);
   if (!project) {
     throw new NotFoundError('Project not found');
-  }
-
-  let imageUrl = project.imageAsset?.url;
-  if (!imageUrl) {
-    throw new ValidationError('This project has no generated image yet — generate one before publishing.');
-  }
-
-  if (imageUrl.startsWith('/uploads/')) {
-    if (!config.features.cloudinaryEnabled) {
-      if (!config.SERVER_URL) {
-        throw new ValidationError(
-          'Local image assets require SERVER_URL to publish. Set SERVER_URL in your environment.'
-        );
-      }
-      imageUrl = `${config.SERVER_URL.replace(/\/+$/, '')}${imageUrl}`;
-    } else {
-      const localPath = path.join(path.resolve(__dirname, '../../../../uploads'), imageUrl.replace(/^\/uploads\//, ''));
-      let buffer: Buffer;
-      try {
-        buffer = await fs.readFile(localPath);
-      } catch (error) {
-        // Don't leak the absolute server path in the client-facing error details.
-        logger.warn({ err: error, imageUrl, localPath }, 'Local uploaded image file not found for publish');
-        throw new ValidationError('Local uploaded image file not found for publish.');
-      }
-
-      const cloudinaryProvider = new CloudinaryStorageProvider();
-      const uploadResult = await cloudinaryProvider.upload(buffer, path.basename(localPath), project.user.toString());
-      const asset = await mediaRepository.create({
-        user: project.user.toString(),
-        brand: project.brand.toString(),
-        source: 'ai-generated',
-        url: uploadResult.url,
-        publicId: uploadResult.publicId,
-        storageProvider: cloudinaryProvider.name,
-        width: uploadResult.width,
-        height: uploadResult.height,
-        format: uploadResult.format,
-        generation: project.activeGeneration ? project.activeGeneration.toString() : null,
-        tags: [],
-      });
-
-      await projectRepository.update(project._id.toString(), project.user.toString(), { imageAssetId: asset._id.toString() });
-      imageUrl = uploadResult.url;
-    }
   }
 
   const brand = await brandRepository.findByIdWithToken(project.brand.toString(), userId);
@@ -110,13 +107,58 @@ async function performPublish(projectId: string, userId: string): Promise<Publis
 
   const caption = composeCaption(project.content);
   const publisher = getInstagramPublisher();
+  let result: any;
 
-  const result = await publisher.publishImagePost({
-    imageUrl,
-    caption,
-    instagramUserId: brand.instagramUserId,
-    accessToken: brand.instagramAccessToken,
-  });
+  if (project.postType === 'carousel') {
+    const assets = project.imageAssets && project.imageAssets.length > 0
+      ? project.imageAssets
+      : project.imageAsset ? [project.imageAsset] : [];
+
+    if (assets.length < 2) {
+      throw new ValidationError('An Instagram carousel post requires at least 2 images.');
+    }
+
+    const imageUrls: string[] = [];
+    for (const asset of assets) {
+      const publicUrl = await ensurePublicUrl(asset.url, asset._id.toString(), project);
+      imageUrls.push(publicUrl);
+    }
+
+    result = await publisher.publishCarouselPost({
+      imageUrls,
+      caption,
+      instagramUserId: brand.instagramUserId,
+      accessToken: brand.instagramAccessToken,
+    });
+  } else if (project.postType === 'story') {
+    let imageUrl = project.imageAsset?.url;
+    if (!imageUrl) {
+      throw new ValidationError('This project has no generated image yet — generate one before publishing.');
+    }
+
+    imageUrl = await ensurePublicUrl(imageUrl, project.imageAsset!._id.toString(), project);
+
+    result = await publisher.publishStoryPost({
+      imageUrl,
+      instagramUserId: brand.instagramUserId,
+      accessToken: brand.instagramAccessToken,
+    });
+  } else {
+    // Default/Feed post
+    let imageUrl = project.imageAsset?.url;
+    if (!imageUrl) {
+      throw new ValidationError('This project has no generated image yet — generate one before publishing.');
+    }
+
+    imageUrl = await ensurePublicUrl(imageUrl, project.imageAsset!._id.toString(), project);
+
+    result = await publisher.publishImagePost({
+      imageUrl,
+      caption,
+      instagramUserId: brand.instagramUserId,
+      accessToken: brand.instagramAccessToken,
+    });
+  }
 
   const updated = await projectRepository.markPublished(projectId, userId, {
     instagramMediaId: result.mediaId,

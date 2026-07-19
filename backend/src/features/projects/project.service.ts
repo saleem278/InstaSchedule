@@ -24,10 +24,10 @@ export async function create(userId: string, data: CreateProjectInput): Promise<
   if (!brand) {
     throw new NotFoundError('Brand not found');
   }
-  return projectRepository.create(userId, data.brandId, data.topic);
+  return projectRepository.create(userId, data.brandId, data.topic, data.postType);
 }
 
-export async function update(id: string, userId: string, data: UpdateProjectInput): Promise<ProjectDocument> {
+export async function update(id: string, userId: string, data: UpdateProjectInput): Promise<ProjectWithImage> {
   await getById(id, userId);
 
   // Ownership check on the referenced MediaAsset before repointing the project
@@ -38,6 +38,15 @@ export async function update(id: string, userId: string, data: UpdateProjectInpu
     const asset = await mediaRepository.findByIdForUser(data.imageAssetId, userId);
     if (!asset) {
       throw new NotFoundError('Media asset not found');
+    }
+  }
+
+  if (data.imageAssetIds !== undefined) {
+    for (const assetId of data.imageAssetIds) {
+      const asset = await mediaRepository.findByIdForUser(assetId, userId);
+      if (!asset) {
+        throw new NotFoundError(`Media asset ${assetId} not found`);
+      }
     }
   }
 
@@ -52,7 +61,7 @@ export async function updateStatus(
   id: string,
   userId: string,
   data: UpdateStatusInput
-): Promise<ProjectDocument> {
+): Promise<ProjectWithImage> {
   await getById(id, userId);
   const scheduledAt = data.scheduledAt !== undefined ? (data.scheduledAt === null ? null : new Date(data.scheduledAt)) : undefined;
   const updated = await projectRepository.updateStatus(id, userId, data.status as ProjectStatus, scheduledAt);
@@ -69,5 +78,13 @@ export async function remove(id: string, userId: string): Promise<void> {
 
 export async function duplicate(id: string, userId: string): Promise<ProjectDocument> {
   const original = await getById(id, userId);
-  return projectRepository.createFromExisting(userId, original.brand.toString(), original.topic, original.content);
+  return projectRepository.createFromExisting(
+    userId,
+    original.brand.toString(),
+    original.topic,
+    original.content,
+    original.postType,
+    original.imageAsset?._id?.toString() || null,
+    original.imageAssets?.map((a) => a._id.toString()) || []
+  );
 }

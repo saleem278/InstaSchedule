@@ -143,6 +143,7 @@ export function GenerationProgress({
   const [altText, setAltText] = useState(project.content.altText);
   const [imagePrompt, setImagePrompt] = useState(project.content.imagePrompt);
   const [imageUrl, setImageUrl] = useState<string | undefined>(project.imageAsset?.url);
+  const [imageUrls, setImageUrls] = useState<string[]>(project.imageAssets?.map((a) => a.url) || []);
 
   const generateMutation = useGenerateContent();
   const regenerateMutation = useRegenerateField();
@@ -182,6 +183,10 @@ export function GenerationProgress({
     setImagePrompt(result.generation.output.imagePrompt);
     if (result.generation.output.imageUrl) {
       setImageUrl(result.generation.output.imageUrl);
+      setImageUrls(project.postType === 'carousel'
+        ? [result.generation.output.imageUrl, result.generation.output.imageUrl, result.generation.output.imageUrl]
+        : [result.generation.output.imageUrl]
+      );
     }
     setImageJobId(result.imageJob.jobId);
 
@@ -196,7 +201,7 @@ export function GenerationProgress({
       setPacingStepIndex(3);
       setLiveMessage('Generating image');
     }, 700);
-  }, []);
+  }, [project.postType]);
 
   const truncateToastText = (message: string, maxLength = 300) => {
     const trimmed = message.trim();
@@ -272,6 +277,10 @@ export function GenerationProgress({
   useEffect(() => {
     if (jobQuery.data?.status === 'completed' && jobQuery.data.output.imageUrl) {
       setImageUrl(jobQuery.data.output.imageUrl);
+      setImageUrls(project.postType === 'carousel'
+        ? [jobQuery.data.output.imageUrl, jobQuery.data.output.imageUrl, jobQuery.data.output.imageUrl]
+        : [jobQuery.data.output.imageUrl]
+      );
       setCompletedIndices((prev) => new Set(prev).add(3));
       setPacingStepIndex(4);
       setLiveMessage('Finalizing');
@@ -290,7 +299,7 @@ export function GenerationProgress({
         id: `job-timeout-${Date.now()}`,
       });
     }
-  }, [jobQuery.data, jobQuery.timedOut]);
+  }, [jobQuery.data, jobQuery.timedOut, project.postType]);
 
   const textReady = generateMutation.isSuccess || skipGeneration;
   // An image job is "in flight" whenever we have a jobId whose polled status
@@ -373,6 +382,10 @@ export function GenerationProgress({
             setImageJobId(result.imageJob.jobId);
             if (result.generation.output.imageUrl) {
               setImageUrl(result.generation.output.imageUrl);
+              setImageUrls(project.postType === 'carousel'
+                ? [result.generation.output.imageUrl, result.generation.output.imageUrl, result.generation.output.imageUrl]
+                : [result.generation.output.imageUrl]
+              );
             }
             return;
           }
@@ -439,9 +452,23 @@ export function GenerationProgress({
   // Handle user-uploaded image: attach the uploaded MediaAsset to the project
   async function handleUploadedAsset(asset: { _id: string; url: string }) {
     try {
-      // Persist the selected image on the Project so it's used for preview/publish
-      await updateProjectMutation.mutateAsync({ projectId: project._id, payload: { imageAssetId: asset._id } });
-      setImageUrl(asset.url);
+      if (project.postType === 'carousel') {
+        const currentAssetIds = project.imageAssets?.map((a) => a._id) || [];
+        const newAssetIds = [...currentAssetIds, asset._id];
+        await updateProjectMutation.mutateAsync({
+          projectId: project._id,
+          payload: { imageAssetIds: newAssetIds },
+        });
+        setImageUrls([...imageUrls, asset.url]);
+        if (!imageUrl) {
+          setImageUrl(asset.url);
+        }
+      } else {
+        // Persist the selected image on the Project so it's used for preview/publish
+        await updateProjectMutation.mutateAsync({ projectId: project._id, payload: { imageAssetId: asset._id } });
+        setImageUrl(asset.url);
+        setImageUrls([asset.url]);
+      }
     } catch {
       toast.error("Couldn't attach uploaded image. Please try again.");
     }
@@ -490,6 +517,8 @@ export function GenerationProgress({
             brandName={brandName}
             brandLogoUrl={brandLogoUrl}
             imageUrl={imageUrl}
+            imageUrls={imageUrls}
+            postType={project.postType}
             caption={caption}
             hashtags={hashtags}
             cta={cta}

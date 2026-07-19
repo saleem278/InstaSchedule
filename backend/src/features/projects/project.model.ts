@@ -30,13 +30,16 @@ export interface ProjectDocument extends Document {
   user: Types.ObjectId;
   topic: string;
   status: ProjectStatus;
+  postType: 'feed' | 'story' | 'carousel';
   content: ProjectContent;
   imageAsset: Types.ObjectId | null;
+  imageAssets: Types.ObjectId[];
   schedule: ProjectSchedule;
   activeGeneration: Types.ObjectId | null;
   createdAt: Date;
   updatedAt: Date;
 }
+
 
 const projectContentSchema = new Schema<ProjectContent>(
   {
@@ -71,8 +74,17 @@ const projectSchema = new Schema<ProjectDocument>(
       default: 'draft',
       index: true,
     },
+    postType: {
+      type: String,
+      enum: ['feed', 'story', 'carousel'],
+      default: 'feed',
+    },
     content: { type: projectContentSchema, default: () => ({}) },
     imageAsset: { type: Schema.Types.ObjectId, ref: 'MediaAsset', default: null },
+    imageAssets: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'MediaAsset' }],
+      default: [],
+    },
     schedule: { type: projectScheduleSchema, default: () => ({}) },
     activeGeneration: { type: Schema.Types.ObjectId, ref: 'Generation', default: null },
   },

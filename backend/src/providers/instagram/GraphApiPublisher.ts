@@ -4,6 +4,8 @@
     import {
       InstagramPublisher,
       PublishImagePostInput,
+      PublishStoryPostInput,
+      PublishCarouselPostInput,
       PublishResult,
     } from './InstagramPublisher.interface';
 
@@ -79,6 +81,55 @@
         return { mediaId, permalink, provider: this.name };
       }
 
+      async publishStoryPost(input: PublishStoryPostInput): Promise<PublishResult> {
+        this.assertPublicHttpsUrl(input.imageUrl);
+
+        const creationId = await this.createStoryMediaContainer(input);
+        await this.waitForContainerReady(creationId, input.accessToken);
+        const mediaId = await this.publishContainer(input, creationId);
+        const permalink = await this.fetchPermalink(mediaId, input.accessToken);
+
+        return { mediaId, permalink, provider: this.name };
+      }
+
+      async publishCarouselPost(input: PublishCarouselPostInput): Promise<PublishResult> {
+        if (!input.imageUrls || input.imageUrls.length < 2 || input.imageUrls.length > 10) {
+          throw new ValidationError('Instagram carousel posts require between 2 and 10 images.');
+        }
+        for (const url of input.imageUrls) {
+          this.assertPublicHttpsUrl(url);
+        }
+
+        // 1. Create item containers for each image
+        const childContainerIds: string[] = [];
+        for (const url of input.imageUrls) {
+          const childId = await this.createCarouselItemContainer(url, input.instagramUserId, input.accessToken);
+          childContainerIds.push(childId);
+        }
+
+        // 2. Wait for all child containers to be ready
+        for (const childId of childContainerIds) {
+          await this.waitForContainerReady(childId, input.accessToken);
+        }
+
+        // 3. Create the parent carousel container
+        const parentId = await this.createParentCarouselContainer(
+          childContainerIds,
+          input.caption,
+          input.instagramUserId,
+          input.accessToken
+        );
+
+        // 4. Wait for parent container to be ready
+        await this.waitForContainerReady(parentId, input.accessToken);
+
+        // 5. Publish the parent carousel container
+        const mediaId = await this.publishContainer(input, parentId);
+        const permalink = await this.fetchPermalink(mediaId, input.accessToken);
+
+        return { mediaId, permalink, provider: this.name };
+      }
+
       private assertPublicHttpsUrl(imageUrl: string): void {
         let parsed: URL;
         try {
@@ -121,6 +172,67 @@
         return data.id;
       }
 
+      private async createStoryMediaContainer(input: PublishStoryPostInput): Promise<string> {
+        const body = new URLSearchParams({
+          image_url: input.imageUrl,
+          media_type: 'STORIES',
+          access_token: input.accessToken,
+        });
+        const data = await this.post<{ id: string }>(
+          `${this.apiRoot}/${input.instagramUserId}/media`,
+          body,
+          'create story media container'
+        );
+        if (!data.id) {
+          throw new ExternalServiceError('Instagram did not return a story media container id');
+        }
+        return data.id;
+      }
+
+      private async createCarouselItemContainer(
+        imageUrl: string,
+        instagramUserId: string,
+        accessToken: string
+      ): Promise<string> {
+        const body = new URLSearchParams({
+          image_url: imageUrl,
+          is_carousel_item: 'true',
+          access_token: accessToken,
+        });
+        const data = await this.post<{ id: string }>(
+          `${this.apiRoot}/${instagramUserId}/media`,
+          body,
+          'create carousel item container'
+        );
+        if (!data.id) {
+          throw new ExternalServiceError('Instagram did not return a carousel item container id');
+        }
+        return data.id;
+      }
+
+      private async createParentCarouselContainer(
+        childrenIds: string[],
+        caption: string,
+        instagramUserId: string,
+        accessToken: string
+      ): Promise<string> {
+        const body = new URLSearchParams({
+          media_type: 'CAROUSEL',
+          children: childrenIds.join(','),
+          caption,
+          access_token: accessToken,
+        });
+        const data = await this.post<{ id: string }>(
+          `${this.apiRoot}/${instagramUserId}/media`,
+          body,
+          'create parent carousel container'
+        );
+        if (!data.id) {
+          throw new ExternalServiceError('Instagram did not return a parent carousel container id');
+        }
+        return data.id;
+      }
+
       /**
        * Polls the container's `status_code` until it's FINISHED (ready to
        * publish), or throws on ERROR / EXPIRED / timeout. Meta fetches the image
@@ -158,7 +270,10 @@
         );
       }
 
-      private async publishContainer(input: PublishImagePostInput, creationId: string): Promise<string> {
+      private async publishContainer(
+        input: { instagramUserId: string; accessToken: string },
+        creationId: string
+      ): Promise<string> {
         const body = new URLSearchParams({
           creation_id: creationId,
           access_token: input.accessToken,

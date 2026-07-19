@@ -32,15 +32,19 @@ export interface PopulatedImageAsset {
   url: string;
 }
 
+export type PostType = 'feed' | 'story' | 'carousel';
+
 export interface Project {
   _id: string;
   brand: string;
   user: string;
   topic: string;
   status: ProjectStatus;
+  postType: PostType;
   content: ProjectContent;
   /** Populated by the API (list/detail reads) with just its URL — never a raw id. */
   imageAsset: PopulatedImageAsset | null;
+  imageAssets: PopulatedImageAsset[];
   schedule: ProjectSchedule;
   activeGeneration: string | null;
   createdAt: string;
@@ -50,13 +54,16 @@ export interface Project {
 export interface CreateProjectPayload {
   brandId: string;
   topic: string;
+  postType?: PostType;
 }
 
 export interface UpdateProjectPayload {
   topic?: string;
   content?: Partial<ProjectContent>;
+  postType?: PostType;
   /** Point the project at a different MediaAsset (e.g. after editing the image). */
   imageAssetId?: string;
+  imageAssetIds?: string[];
 }
 
 export interface UpdateProjectStatusPayload {

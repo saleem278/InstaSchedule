@@ -2,6 +2,8 @@ import { logger } from '../../config/logger';
 import {
   InstagramPublisher,
   PublishImagePostInput,
+  PublishStoryPostInput,
+  PublishCarouselPostInput,
   PublishResult,
 } from './InstagramPublisher.interface';
 
@@ -24,6 +26,30 @@ export class MockPublisher implements InstagramPublisher {
     }
     const mediaId = `mock-${input.instagramUserId}-${Math.abs(hash)}`;
     logger.info({ mediaId, instagramUserId: input.instagramUserId }, 'MockPublisher simulated an Instagram publish');
+    return {
+      mediaId,
+      permalink: `https://instagram.com/p/${mediaId}`,
+      provider: this.name,
+    };
+  }
+
+  async publishStoryPost(input: PublishStoryPostInput): Promise<PublishResult> {
+    const mediaId = `mock-story-${input.instagramUserId}-${Math.floor(Math.random() * 100000)}`;
+    logger.info({ mediaId, instagramUserId: input.instagramUserId }, 'MockPublisher simulated an Instagram Story publish');
+    return {
+      mediaId,
+      permalink: `https://instagram.com/stories/mock/${mediaId}`,
+      provider: this.name,
+    };
+  }
+
+  async publishCarouselPost(input: PublishCarouselPostInput): Promise<PublishResult> {
+    let hash = 0;
+    for (let i = 0; i < input.caption.length; i += 1) {
+      hash = (hash * 31 + input.caption.charCodeAt(i)) | 0;
+    }
+    const mediaId = `mock-carousel-${input.instagramUserId}-${Math.abs(hash)}`;
+    logger.info({ mediaId, instagramUserId: input.instagramUserId }, 'MockPublisher simulated an Instagram Carousel publish');
     return {
       mediaId,
       permalink: `https://instagram.com/p/${mediaId}`,

@@ -37,6 +37,7 @@ export function CreateWizard(): React.JSX.Element {
 
   const [step, setStep] = useState<WizardStep>('topic');
   const [topic, setTopic] = useState(prefillTopic);
+  const [postType, setPostType] = useState<'feed' | 'story' | 'carousel'>('feed');
   const [project, setProject] = useState<Project | null>(null);
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
 
@@ -55,7 +56,7 @@ export function CreateWizard(): React.JSX.Element {
   function handleSubmitTopic() {
     if (!activeBrandId || topic.trim().length < 3) return;
     createProjectMutation.mutate(
-      { brandId: activeBrandId, topic: topic.trim() },
+      { brandId: activeBrandId, topic: topic.trim(), postType },
       {
         onSuccess: (created) => {
           setProject(created);
@@ -90,7 +91,13 @@ export function CreateWizard(): React.JSX.Element {
       {/* Step content */}
       <div className="min-h-0 flex-1">
         {step === 'topic' && (
-          <TopicStep topic={topic} onChangeTopic={setTopic} onSubmit={handleSubmitTopic} />
+          <TopicStep
+            topic={topic}
+            onChangeTopic={setTopic}
+            postType={postType}
+            onChangePostType={setPostType}
+            onSubmit={handleSubmitTopic}
+          />
         )}
         {step === 'generating' && project && (
           <GenerationProgress

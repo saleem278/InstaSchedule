@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const createProjectSchema = z.object({
   brandId: z.string().trim().min(1, 'brandId is required'),
   topic: z.string().trim().min(3, 'Topic must be at least 3 characters'),
+  postType: z.enum(['feed', 'story', 'carousel']).optional(),
 });
 
 const contentSchema = z.object({
@@ -16,9 +17,11 @@ const contentSchema = z.object({
 export const updateProjectSchema = z.object({
   topic: z.string().trim().min(3, 'Topic must be at least 3 characters').optional(),
   content: contentSchema.optional(),
+  postType: z.enum(['feed', 'story', 'carousel']).optional(),
   // Set when the user edits/replaces the post image (e.g. via the image editor);
   // points the project at a different MediaAsset the user owns.
   imageAssetId: z.string().trim().min(1).optional(),
+  imageAssetIds: z.array(z.string().trim().min(1)).optional(),
 });
 
 const isoDateString = z

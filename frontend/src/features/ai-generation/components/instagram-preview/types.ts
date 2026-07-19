@@ -7,6 +7,8 @@ export interface InstagramPreviewContent {
   brandName: string;
   brandLogoUrl?: string;
   imageUrl?: string;
+  imageUrls?: string[];
+  postType?: string;
   caption: string;
   hashtags: string[];
   cta?: string;

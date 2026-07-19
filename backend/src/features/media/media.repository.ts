@@ -88,7 +88,7 @@ export async function create(data: CreateAssetInput): Promise<MediaAssetDocument
 export async function update(
   id: string,
   userId: string,
-  data: UpdateAssetInput
+  data: UpdateAssetInput & { url?: string }
 ): Promise<MediaAssetDocument | null> {
   return MediaAssetModel.findOneAndUpdate({ _id: id, user: userId }, { $set: data }, { new: true })
     .lean<MediaAssetDocument>()

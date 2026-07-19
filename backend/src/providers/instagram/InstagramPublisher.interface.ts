@@ -9,6 +9,26 @@ export interface PublishImagePostInput {
   accessToken: string;
 }
 
+export interface PublishStoryPostInput {
+  /** Publicly reachable HTTPS image URL for the story. */
+  imageUrl: string;
+  /** IG Business/Creator account id (the publish target). */
+  instagramUserId: string;
+  /** Long-lived access token authorized for content publishing on that account. */
+  accessToken: string;
+}
+
+export interface PublishCarouselPostInput {
+  /** Array of publicly reachable HTTPS image URLs. Min 2, max 10. */
+  imageUrls: string[];
+  /** Full caption text (caption + CTA + hashtags already composed by the caller). */
+  caption: string;
+  /** IG Business/Creator account id (the publish target). */
+  instagramUserId: string;
+  /** Long-lived access token authorized for content publishing on that account. */
+  accessToken: string;
+}
+
 export interface PublishResult {
   /** The published Instagram media id. */
   mediaId: string;
@@ -21,4 +41,6 @@ export interface PublishResult {
 export interface InstagramPublisher {
   readonly name: string;
   publishImagePost(input: PublishImagePostInput): Promise<PublishResult>;
+  publishStoryPost(input: PublishStoryPostInput): Promise<PublishResult>;
+  publishCarouselPost(input: PublishCarouselPostInput): Promise<PublishResult>;
 }

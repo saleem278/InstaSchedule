@@ -6,11 +6,12 @@ export interface ListFilters {
   status?: ProjectStatus;
 }
 
-// Read-path projection where `imageAsset` is populated with just its URL,
+// Read-path projection where `imageAsset` / `imageAssets` are populated with just their URL,
 // used by list/detail reads so the frontend can render real thumbnails
 // without a separate media lookup per project.
-export type ProjectWithImage = Omit<ProjectDocument, 'imageAsset'> & {
-  imageAsset: { _id: unknown; url: string } | null;
+export type ProjectWithImage = Omit<ProjectDocument, 'imageAsset' | 'imageAssets'> & {
+  imageAsset: { _id: any; url: string } | null;
+  imageAssets: { _id: any; url: string }[];
 };
 
 export interface ListResult {
@@ -31,6 +32,7 @@ export async function list(userId: string, filters: ListFilters, page: number, l
       .skip((page - 1) * limit)
       .limit(limit)
       .populate('imageAsset', 'url')
+      .populate('imageAssets', 'url')
       .lean<ProjectWithImage[]>()
       .exec(),
     ProjectModel.countDocuments(query).exec(),
@@ -42,12 +44,18 @@ export async function list(userId: string, filters: ListFilters, page: number, l
 export async function findByIdForUser(id: string, userId: string): Promise<ProjectWithImage | null> {
   return ProjectModel.findOne({ _id: id, user: userId })
     .populate('imageAsset', 'url')
+    .populate('imageAssets', 'url')
     .lean<ProjectWithImage>()
     .exec();
 }
 
-export async function create(userId: string, brandId: string, topic: string): Promise<ProjectDocument> {
-  const project = await ProjectModel.create({ user: userId, brand: brandId, topic });
+export async function create(
+  userId: string,
+  brandId: string,
+  topic: string,
+  postType?: 'feed' | 'story' | 'carousel'
+): Promise<ProjectDocument> {
+  const project = await ProjectModel.create({ user: userId, brand: brandId, topic, postType });
   return project.toObject();
 }
 
@@ -55,20 +63,26 @@ export async function createFromExisting(
   userId: string,
   brand: string,
   topic: string,
-  content: ProjectDocument['content']
+  content: ProjectDocument['content'],
+  postType?: 'feed' | 'story' | 'carousel',
+  imageAsset?: string | null,
+  imageAssets?: string[]
 ): Promise<ProjectDocument> {
   const project = await ProjectModel.create({
     user: userId,
     brand,
     topic,
     content,
+    postType,
+    imageAsset,
+    imageAssets,
     status: 'draft',
     schedule: { scheduledAt: null, publishedAt: null },
   });
   return project.toObject();
 }
 
-export async function update(id: string, userId: string, data: UpdateProjectInput): Promise<ProjectDocument | null> {
+export async function update(id: string, userId: string, data: UpdateProjectInput & { imageAssetIds?: string[] }): Promise<ProjectWithImage | null> {
   const update: Record<string, unknown> = {};
   if (data.topic !== undefined) {
     update.topic = data.topic;
@@ -80,13 +94,21 @@ export async function update(id: string, userId: string, data: UpdateProjectInpu
       }
     }
   }
+  if (data.postType !== undefined) {
+    update.postType = data.postType;
+  }
   // no per-project model overrides; ignore textModel/imageModel if present
   if (data.imageAssetId !== undefined) {
     update.imageAsset = data.imageAssetId;
   }
+  if (data.imageAssetIds !== undefined) {
+    update.imageAssets = data.imageAssetIds;
+  }
 
   return ProjectModel.findOneAndUpdate({ _id: id, user: userId }, { $set: update }, { new: true })
-    .lean<ProjectDocument>()
+    .populate('imageAsset', 'url')
+    .populate('imageAssets', 'url')
+    .lean<ProjectWithImage>()
     .exec();
 }
 
@@ -95,7 +117,7 @@ export async function updateStatus(
   userId: string,
   status: ProjectStatus,
   scheduledAt?: Date | null
-): Promise<ProjectDocument | null> {
+): Promise<ProjectWithImage | null> {
   const update: Record<string, unknown> = { status };
   if (scheduledAt !== undefined) {
     update['schedule.scheduledAt'] = scheduledAt;
@@ -105,7 +127,9 @@ export async function updateStatus(
   }
 
   return ProjectModel.findOneAndUpdate({ _id: id, user: userId }, { $set: update }, { new: true })
-    .lean<ProjectDocument>()
+    .populate('imageAsset', 'url')
+    .populate('imageAssets', 'url')
+    .lean<ProjectWithImage>()
     .exec();
 }
 
@@ -113,7 +137,7 @@ export async function markPublished(
   id: string,
   userId: string,
   result: { instagramMediaId: string; instagramPermalink: string | null }
-): Promise<ProjectDocument | null> {
+): Promise<ProjectWithImage | null> {
   return ProjectModel.findOneAndUpdate(
     { _id: id, user: userId },
     {
@@ -127,7 +151,9 @@ export async function markPublished(
     },
     { new: true }
   )
-    .lean<ProjectDocument>()
+    .populate('imageAsset', 'url')
+    .populate('imageAssets', 'url')
+    .lean<ProjectWithImage>()
     .exec();
 }
 
@@ -143,11 +169,13 @@ export async function recordPublishError(
   userId: string,
   message: string,
   terminal = false
-): Promise<ProjectDocument | null> {
+): Promise<ProjectWithImage | null> {
   const set: Record<string, unknown> = { 'schedule.lastPublishError': message };
   if (terminal) set.status = 'failed';
   return ProjectModel.findOneAndUpdate({ _id: id, user: userId }, { $set: set }, { new: true })
-    .lean<ProjectDocument>()
+    .populate('imageAsset', 'url')
+    .populate('imageAssets', 'url')
+    .lean<ProjectWithImage>()
     .exec();
 }
 

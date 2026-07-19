@@ -13,7 +13,7 @@ export type { InstagramMockProps, InstagramPreviewContent } from './types';
  */
 export function InstagramPreview(content: InstagramMockProps): React.JSX.Element {
   return (
-    <Tabs defaultValue="feed" className="flex w-full flex-col items-center gap-4">
+    <Tabs defaultValue={content.postType ?? 'feed'} className="flex w-full flex-col items-center gap-4">
       <TabsList className="rounded-full bg-backgroundMuted p-1">
         <TabsTrigger value="feed" className="rounded-full px-4">
           Feed

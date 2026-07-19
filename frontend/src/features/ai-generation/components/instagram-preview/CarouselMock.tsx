@@ -20,6 +20,7 @@ export function CarouselMock({
   brandName,
   brandLogoUrl,
   imageUrl,
+  imageUrls,
   caption,
   hashtags,
   loading = false,
@@ -30,7 +31,10 @@ export function CarouselMock({
   glow = false,
   className,
 }: InstagramMockProps): React.JSX.Element {
-  const slideCount = 3;
+  const displayImages = imageUrls && imageUrls.length > 0
+    ? imageUrls
+    : imageUrl ? [imageUrl, imageUrl, imageUrl] : [];
+  const slideCount = displayImages.length;
   const [index, setIndex] = useState(0);
 
   const handleDragEnd = (_e: unknown, info: { offset: { x: number } }) => {
@@ -64,7 +68,7 @@ export function CarouselMock({
         </div>
 
         <div className="relative aspect-square w-full shrink-0 overflow-hidden bg-backgroundMuted">
-          {loading || imageLoading || !imageUrl ? (
+          {loading || imageLoading || displayImages.length === 0 ? (
             <DevelopingImage
               imageUrl={imageUrl}
               imageLoading={loading || imageLoading}
@@ -83,17 +87,17 @@ export function CarouselMock({
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
               style={{ width: `${slideCount * 100}%` }}
             >
-              {Array.from({ length: slideCount }).map((_, i) => (
+              {displayImages.map((imgUrl, i) => (
                 <div key={i} className="h-full w-full shrink-0" style={{ width: `${100 / slideCount}%` }}>
-                  <img src={imageUrl} alt={`Slide ${i + 1}`} className="h-full w-full object-cover" />
+                  <img src={imgUrl} alt={`Slide ${i + 1}`} className="h-full w-full object-cover" />
                 </div>
               ))}
             </motion.div>
           )}
 
-          {!loading && !imageLoading && imageUrl && (
+          {!loading && !imageLoading && displayImages.length > 0 && (
             <div className="absolute inset-x-0 top-2 flex justify-center gap-1">
-              {Array.from({ length: slideCount }).map((_, i) => (
+              {displayImages.map((_, i) => (
                 <span
                   key={i}
                   className={cn(

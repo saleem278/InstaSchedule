@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/core/utils/cn';
 
 const EXAMPLE_TOPICS = [
   'Announce our new summer collection launch',
@@ -14,6 +15,8 @@ const EXAMPLE_TOPICS = [
 interface TopicStepProps {
   topic: string;
   onChangeTopic: (topic: string) => void;
+  postType: 'feed' | 'story' | 'carousel';
+  onChangePostType: (type: 'feed' | 'story' | 'carousel') => void;
   onSubmit: () => void;
 }
 
@@ -21,7 +24,13 @@ interface TopicStepProps {
  * Large centered textarea with a rotating example placeholder (swaps every
  * 3s via AnimatePresence fade). Enter submits, Shift+Enter inserts a newline.
  */
-export function TopicStep({ topic, onChangeTopic, onSubmit }: TopicStepProps): React.JSX.Element {
+export function TopicStep({
+  topic,
+  onChangeTopic,
+  postType,
+  onChangePostType,
+  onSubmit,
+}: TopicStepProps): React.JSX.Element {
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
 
   useEffect(() => {
@@ -77,6 +86,28 @@ export function TopicStep({ topic, onChangeTopic, onSubmit }: TopicStepProps): R
             </AnimatePresence>
           </div>
         )}
+      </div>
+
+      {/* Post Type Segmented Control */}
+      <div className="flex flex-col items-center gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-textTertiary">Post Type</span>
+        <div className="flex gap-1 rounded-full bg-backgroundMuted p-1 border border-border">
+          {(['feed', 'story', 'carousel'] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => onChangePostType(type)}
+              className={cn(
+                'rounded-full px-4 py-1.5 text-xs font-semibold transition-all capitalize',
+                postType === type
+                  ? 'bg-accent text-white shadow'
+                  : 'text-textSecondary hover:text-textPrimary'
+              )}
+            >
+              {type}
+            </button>
+          ))}
+        </div>
       </div>
 
       <Button
