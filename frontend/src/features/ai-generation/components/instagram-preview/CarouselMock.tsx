@@ -1,6 +1,5 @@
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Heart, MessageCircle, Send, Bookmark, MoreHorizontal } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Heart, MessageCircle, Send, Bookmark, MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PhoneFrame } from './PhoneFrame';
@@ -8,13 +7,10 @@ import { DevelopingImage } from './DevelopingImage';
 import { cn } from '@/core/utils/cn';
 import type { InstagramMockProps } from './types';
 
-const SWIPE_THRESHOLD = 60;
-
 /**
- * Like FeedMock but with dot pagination + a framer-motion drag="x" swipe
- * across N slides. Since the API only ever returns a single generated image,
- * this synthesizes a fixed 3-slide carousel reusing the same image so the
- * interaction pattern can be demonstrated/reviewed.
+ * Like FeedMock but with dot pagination + native touch/swipe scroll
+ * across slides. Supports a 4:5 aspect ratio viewport to prevent portrait
+ * crop/cutoff issues, matching modern Instagram formats.
  */
 export function CarouselMock({
   brandName,
@@ -30,18 +26,71 @@ export function CarouselMock({
   textReady = true,
   glow = false,
   className,
+  activeSlideIndex,
+  onActiveSlideIndexChange,
 }: InstagramMockProps): React.JSX.Element {
   const displayImages = imageUrls && imageUrls.length > 0
     ? imageUrls
     : imageUrl ? [imageUrl, imageUrl, imageUrl] : [];
   const slideCount = displayImages.length;
-  const [index, setIndex] = useState(0);
+  
+  const [localIndex, setLocalIndex] = useState(0);
+  const index = activeSlideIndex !== undefined ? activeSlideIndex : localIndex;
+  
+  const setIndex = (newIdx: number) => {
+    if (onActiveSlideIndexChange) {
+      onActiveSlideIndexChange(newIdx);
+    } else {
+      setLocalIndex(newIdx);
+    }
+  };
 
-  const handleDragEnd = (_e: unknown, info: { offset: { x: number } }) => {
-    if (info.offset.x < -SWIPE_THRESHOLD && index < slideCount - 1) {
-      setIndex((i) => i + 1);
-    } else if (info.offset.x > SWIPE_THRESHOLD && index > 0) {
-      setIndex((i) => i - 1);
+  const sliderRef = useRef<HTMLDivElement>(null);
+  const isProgrammaticRef = useRef(false);
+
+  // Sync scroll position when activeSlideIndex changes from outside
+  useEffect(() => {
+    const container = sliderRef.current;
+    if (container && activeSlideIndex !== undefined) {
+      const targetScrollLeft = activeSlideIndex * container.clientWidth;
+      if (Math.abs(container.scrollLeft - targetScrollLeft) > 5) {
+        isProgrammaticRef.current = true;
+        container.scrollTo({
+          left: targetScrollLeft,
+          behavior: 'smooth',
+        });
+        setTimeout(() => {
+          isProgrammaticRef.current = false;
+        }, 350);
+      }
+    }
+  }, [activeSlideIndex]);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (isProgrammaticRef.current) return;
+    const container = e.currentTarget;
+    const scrollLeft = container.scrollLeft;
+    const width = container.clientWidth;
+    if (width > 0) {
+      const newIndex = Math.round(scrollLeft / width);
+      if (newIndex !== index) {
+        setIndex(newIndex);
+      }
+    }
+  };
+
+  const scrollToIndex = (idx: number) => {
+    const container = sliderRef.current;
+    if (container) {
+      isProgrammaticRef.current = true;
+      container.scrollTo({
+        left: idx * container.clientWidth,
+        behavior: 'smooth',
+      });
+      setIndex(idx);
+      setTimeout(() => {
+        isProgrammaticRef.current = false;
+      }, 350);
     }
   };
 
@@ -67,7 +116,7 @@ export function CarouselMock({
           <MoreHorizontal className="h-4 w-4 text-textPrimary" />
         </div>
 
-        <div className="relative aspect-square w-full shrink-0 overflow-hidden bg-backgroundMuted">
+        <div className="relative aspect-[4/5] w-full shrink-0 overflow-hidden bg-black border-y border-border/10">
           {loading || imageLoading || displayImages.length === 0 ? (
             <DevelopingImage
               imageUrl={imageUrl}
@@ -77,45 +126,74 @@ export function CarouselMock({
               variant="fill"
             />
           ) : (
-            <motion.div
-              className="flex h-full"
-              drag="x"
-              dragConstraints={{ left: 0, right: 0 }}
-              dragElastic={0.2}
-              onDragEnd={handleDragEnd}
-              animate={{ x: `${-index * 100}%` }}
-              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              style={{ width: `${slideCount * 100}%` }}
+            <div
+              ref={sliderRef}
+              onScroll={handleScroll}
+              className="flex h-full w-full overflow-x-auto snap-x snap-mandatory scroll-smooth scrollbar-none"
             >
               {displayImages.map((imgUrl, i) => (
-                <div key={i} className="h-full w-full shrink-0" style={{ width: `${100 / slideCount}%` }}>
-                  <img src={imgUrl} alt={`Slide ${i + 1}`} className="h-full w-full object-cover" />
+                <div key={i} className="h-full w-full shrink-0 snap-start snap-always">
+                  <img src={imgUrl} alt={`Slide ${i + 1}`} className="h-full w-full object-contain" />
                 </div>
-              ))}
-            </motion.div>
-          )}
-
-          {!loading && !imageLoading && displayImages.length > 0 && (
-            <div className="absolute inset-x-0 top-2 flex justify-center gap-1">
-              {displayImages.map((_, i) => (
-                <span
-                  key={i}
-                  className={cn(
-                    'h-1.5 w-1.5 rounded-full transition-colors',
-                    i === index ? 'bg-accent' : 'bg-white/60'
-                  )}
-                />
               ))}
             </div>
           )}
+
+          {/* Navigation Arrows */}
+          {!loading && !imageLoading && displayImages.length > 1 && (
+            <>
+              {index > 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    scrollToIndex(index - 1);
+                  }}
+                  className="absolute left-2 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors shadow-sm"
+                  aria-label="Previous slide"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {index < slideCount - 1 && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    scrollToIndex(index + 1);
+                  }}
+                  className="absolute right-2 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors shadow-sm"
+                  aria-label="Next slide"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </>
+          )}
         </div>
 
-        <div className="flex shrink-0 items-center justify-between px-3 py-2">
+        <div className="relative flex shrink-0 items-center justify-between px-3 py-2 border-t border-border/20">
           <div className="flex items-center gap-3">
             <Heart className="h-5 w-5 text-textPrimary" strokeWidth={1.75} />
             <MessageCircle className="h-5 w-5 text-textPrimary" strokeWidth={1.75} />
             <Send className="h-5 w-5 text-textPrimary" strokeWidth={1.75} />
           </div>
+
+          {/* Dot Pagination indicators in the center */}
+          {!loading && !imageLoading && displayImages.length > 1 && (
+            <div className="absolute inset-x-0 flex justify-center gap-1 pointer-events-none">
+              {displayImages.map((_, i) => (
+                <span
+                  key={i}
+                  className={cn(
+                    'h-1.5 w-1.5 rounded-full transition-all duration-250',
+                    i === index ? 'bg-accent w-2.5' : 'bg-textSecondary/30'
+                  )}
+                />
+              ))}
+            </div>
+          )}
+
           <Bookmark className="h-5 w-5 text-textPrimary" strokeWidth={1.75} />
         </div>
 

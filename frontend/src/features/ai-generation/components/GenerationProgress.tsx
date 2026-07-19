@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { AlertCircle, RotateCw, Shuffle, CalendarClock, ImageIcon, Send } from 'lucide-react';
+import { AlertCircle, RotateCw, Shuffle, CalendarClock, ImageIcon, Send, Trash2, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 import { extractErrorMessage } from '@/core/api/extractErrorMessage';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -31,6 +31,7 @@ import { ImageEditor } from '@/features/image-editor';
 import { MediaUploadDropzone } from '@/features/media/components/MediaUploadDropzone';
 import type { Project } from '@/features/projects/schemas/project.types';
 import type { GenerateFullResult, RegenerableField } from '../schemas/generation.types';
+import { cn } from '@/core/utils/cn';
 
 const TEXT_PROVIDER_MODELS: Record<string, { label: string; value: string }[]> = {
   groq: [
@@ -143,7 +144,11 @@ export function GenerationProgress({
   const [altText, setAltText] = useState(project.content.altText);
   const [imagePrompt, setImagePrompt] = useState(project.content.imagePrompt);
   const [imageUrl, setImageUrl] = useState<string | undefined>(project.imageAsset?.url);
-  const [imageUrls, setImageUrls] = useState<string[]>(project.imageAssets?.map((a) => a.url) || []);
+  const [imageAssets, setImageAssets] = useState<{ _id: string; url: string }[]>(
+    project.imageAssets || []
+  );
+  const imageUrls = imageAssets.map((a) => a.url);
+  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
 
   const generateMutation = useGenerateContent();
   const regenerateMutation = useRegenerateField();
@@ -183,10 +188,14 @@ export function GenerationProgress({
     setImagePrompt(result.generation.output.imagePrompt);
     if (result.generation.output.imageUrl) {
       setImageUrl(result.generation.output.imageUrl);
-      setImageUrls(project.postType === 'carousel'
-        ? [result.generation.output.imageUrl, result.generation.output.imageUrl, result.generation.output.imageUrl]
-        : [result.generation.output.imageUrl]
-      );
+      const mockAssets = project.postType === 'carousel'
+        ? [
+          { _id: 'mock-1', url: result.generation.output.imageUrl },
+          { _id: 'mock-2', url: result.generation.output.imageUrl },
+          { _id: 'mock-3', url: result.generation.output.imageUrl }
+        ]
+        : [{ _id: 'main', url: result.generation.output.imageUrl }];
+      setImageAssets(mockAssets);
     }
     setImageJobId(result.imageJob.jobId);
 
@@ -277,10 +286,14 @@ export function GenerationProgress({
   useEffect(() => {
     if (jobQuery.data?.status === 'completed' && jobQuery.data.output.imageUrl) {
       setImageUrl(jobQuery.data.output.imageUrl);
-      setImageUrls(project.postType === 'carousel'
-        ? [jobQuery.data.output.imageUrl, jobQuery.data.output.imageUrl, jobQuery.data.output.imageUrl]
-        : [jobQuery.data.output.imageUrl]
-      );
+      const mockAssets = project.postType === 'carousel'
+        ? [
+          { _id: 'mock-1', url: jobQuery.data.output.imageUrl },
+          { _id: 'mock-2', url: jobQuery.data.output.imageUrl },
+          { _id: 'mock-3', url: jobQuery.data.output.imageUrl }
+        ]
+        : [{ _id: 'main', url: jobQuery.data.output.imageUrl }];
+      setImageAssets(mockAssets);
       setCompletedIndices((prev) => new Set(prev).add(3));
       setPacingStepIndex(4);
       setLiveMessage('Finalizing');
@@ -351,8 +364,8 @@ export function GenerationProgress({
   const generateErrorMessage = generateMutation.isError
     ? extractErrorMessage(generateMutation.error, 'Something went wrong generating this.')
     : generateFailed
-    ? generateMutation.data?.generation.errorMessage ?? 'Something went wrong generating this.'
-    : undefined;
+      ? generateMutation.data?.generation.errorMessage ?? 'Something went wrong generating this.'
+      : undefined;
 
   const regeneratingField = regenerateMutation.isPending ? regenerateMutation.variables?.field : undefined;
 
@@ -382,10 +395,14 @@ export function GenerationProgress({
             setImageJobId(result.imageJob.jobId);
             if (result.generation.output.imageUrl) {
               setImageUrl(result.generation.output.imageUrl);
-              setImageUrls(project.postType === 'carousel'
-                ? [result.generation.output.imageUrl, result.generation.output.imageUrl, result.generation.output.imageUrl]
-                : [result.generation.output.imageUrl]
-              );
+              const mockAssets = project.postType === 'carousel'
+                ? [
+                  { _id: 'mock-1', url: result.generation.output.imageUrl },
+                  { _id: 'mock-2', url: result.generation.output.imageUrl },
+                  { _id: 'mock-3', url: result.generation.output.imageUrl }
+                ]
+                : [{ _id: 'main', url: result.generation.output.imageUrl }];
+              setImageAssets(mockAssets);
             }
             return;
           }
@@ -449,28 +466,83 @@ export function GenerationProgress({
     publishMutation.mutate(project._id, { onSuccess: () => onDone?.() });
   }
 
-  // Handle user-uploaded image: attach the uploaded MediaAsset to the project
-  async function handleUploadedAsset(asset: { _id: string; url: string }) {
+  async function handleMoveSlide(idx: number, direction: 'left' | 'right') {
+    const targetIdx = direction === 'left' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= imageAssets.length) return;
+
+    const nextAssets = [...imageAssets];
+    const temp = nextAssets[idx];
+    nextAssets[idx] = nextAssets[targetIdx];
+    nextAssets[targetIdx] = temp;
+    setImageAssets(nextAssets);
+
+    const assetIds = nextAssets.map((a) => a._id);
+    try {
+      await updateProjectMutation.mutateAsync({
+        projectId: project._id,
+        payload: { imageAssetIds: assetIds },
+      });
+      if (nextAssets[0]) {
+        setImageUrl(nextAssets[0].url);
+      }
+    } catch {
+      toast.error("Couldn't save slide sequence. Please try again.");
+    }
+  }
+
+  async function handleRemoveSlide(idx: number) {
+    if (imageAssets.length <= 2) {
+      toast.error('Carousel posts require at least 2 slides.');
+      return;
+    }
+
+    const nextAssets = imageAssets.filter((_, i) => i !== idx);
+    setImageAssets(nextAssets);
+
+    const assetIds = nextAssets.map((a) => a._id);
+    try {
+      await updateProjectMutation.mutateAsync({
+        projectId: project._id,
+        payload: { imageAssetIds: assetIds },
+      });
+      if (imageUrl === imageAssets[idx].url) {
+        setImageUrl(nextAssets[0]?.url);
+      }
+    } catch {
+      toast.error("Couldn't remove slide. Please try again.");
+    }
+  }
+
+  // Handle user-uploaded images: attach the uploaded MediaAssets to the project
+  async function handleUploadedAssets(assets: { _id: string; url: string }[]) {
     try {
       if (project.postType === 'carousel') {
-        const currentAssetIds = project.imageAssets?.map((a) => a._id) || [];
-        const newAssetIds = [...currentAssetIds, asset._id];
+        const filteredAssets = imageAssets.filter((a) => !a._id.startsWith('mock-'));
+        const newAssets = [...filteredAssets, ...assets];
+        setImageAssets(newAssets);
+
+        const newAssetIds = newAssets.map((a) => a._id);
         await updateProjectMutation.mutateAsync({
           projectId: project._id,
           payload: { imageAssetIds: newAssetIds },
         });
-        setImageUrls([...imageUrls, asset.url]);
-        if (!imageUrl) {
-          setImageUrl(asset.url);
+
+        if (!imageUrl || imageUrl.startsWith('http://') || imageUrl.startsWith('https://') && imageUrl.includes('mock-')) {
+          if (newAssets[0]) {
+            setImageUrl(newAssets[0].url);
+          }
         }
       } else {
-        // Persist the selected image on the Project so it's used for preview/publish
-        await updateProjectMutation.mutateAsync({ projectId: project._id, payload: { imageAssetId: asset._id } });
-        setImageUrl(asset.url);
-        setImageUrls([asset.url]);
+        // Persist the last selected image on the Project so it's used for preview/publish
+        const lastAsset = assets[assets.length - 1];
+        if (lastAsset) {
+          await updateProjectMutation.mutateAsync({ projectId: project._id, payload: { imageAssetId: lastAsset._id } });
+          setImageUrl(lastAsset.url);
+          setImageAssets([lastAsset]);
+        }
       }
     } catch {
-      toast.error("Couldn't attach uploaded image. Please try again.");
+      toast.error("Couldn't attach uploaded images. Please try again.");
     }
   }
 
@@ -528,6 +600,8 @@ export function GenerationProgress({
             onRetryImage={() => handleRegenerate('image')}
             textReady={textReady || phase === 'ready'}
             glow={glowPulse}
+            activeSlideIndex={activeSlideIndex}
+            onActiveSlideIndexChange={setActiveSlideIndex}
           />
         </div>
 
@@ -592,13 +666,13 @@ export function GenerationProgress({
 
                   {(selectedTextModel === ' ' ||
                     (selectedTextModel !== '' && !(TEXT_PROVIDER_MODELS[selectedTextProvider] || []).some((m) => m.value === selectedTextModel))) && (
-                    <Input
-                      className="mt-1 h-8 text-xs"
-                      placeholder="Enter custom model ID"
-                      value={selectedTextModel === ' ' ? '' : selectedTextModel}
-                      onChange={(e) => setSelectedTextModel(e.target.value)}
-                    />
-                  )}
+                      <Input
+                        className="mt-1 h-8 text-xs"
+                        placeholder="Enter custom model ID"
+                        value={selectedTextModel === ' ' ? '' : selectedTextModel}
+                        onChange={(e) => setSelectedTextModel(e.target.value)}
+                      />
+                    )}
                 </div>
               )}
             </div>
@@ -660,13 +734,13 @@ export function GenerationProgress({
 
                   {(selectedImageModel === ' ' ||
                     (selectedImageModel !== '' && !(IMAGE_PROVIDER_MODELS[selectedImageProvider] || []).some((m) => m.value === selectedImageModel))) && (
-                    <Input
-                      className="mt-1 h-8 text-xs"
-                      placeholder="Enter custom model ID"
-                      value={selectedImageModel === ' ' ? '' : selectedImageModel}
-                      onChange={(e) => setSelectedImageModel(e.target.value)}
-                    />
-                  )}
+                      <Input
+                        className="mt-1 h-8 text-xs"
+                        placeholder="Enter custom model ID"
+                        value={selectedImageModel === ' ' ? '' : selectedImageModel}
+                        onChange={(e) => setSelectedImageModel(e.target.value)}
+                      />
+                    )}
                 </div>
               )}
             </div>
@@ -787,10 +861,85 @@ export function GenerationProgress({
               </div>
             </div>
           </FieldCard>
+
+          {project.postType === 'carousel' && (
+            <FieldCard title={`Carousel Slides (${imageAssets.length}/10)`}>
+              <div className="space-y-3">
+                <p className="text-xs text-textSecondary">
+                  Add up to 10 slides. Use the arrows to change sequence, or remove slides.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  {imageAssets.map((asset, idx) => (
+                    <div
+                      key={asset._id + '-' + idx}
+                      onClick={() => setActiveSlideIndex(idx)}
+                      className={cn(
+                        "group relative flex h-20 w-20 cursor-pointer flex-col overflow-hidden rounded-md border bg-backgroundMuted transition-all",
+                        idx === activeSlideIndex ? "border-accent ring-2 ring-accent/30" : "border-border hover:border-textSecondary"
+                      )}
+                    >
+                      <img src={asset.url} alt="" className="h-full w-full object-cover" />
+                      <span className="absolute left-1 top-1 rounded bg-black/70 px-1 py-0.5 text-[9px] font-bold text-white shadow-sm">
+                        {idx + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveSlide(idx);
+                        }}
+                        disabled={imageAssets.length <= 2}
+                        className="absolute right-1 top-1 hidden rounded bg-danger/80 p-1 text-white hover:bg-danger group-hover:block disabled:opacity-50"
+                        title="Remove slide"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                      <div className="absolute inset-x-0 bottom-0 flex h-6 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveSlide(idx, 'left');
+                          }}
+                          className="flex flex-1 items-center justify-center text-white hover:bg-white/20 disabled:opacity-30"
+                          title="Move left"
+                        >
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === imageAssets.length - 1}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveSlide(idx, 'right');
+                          }}
+                          className="flex flex-1 items-center justify-center text-white hover:bg-white/20 disabled:opacity-30"
+                          title="Move right"
+                        >
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {imageAssets.length < 10 && (
+                    <button
+                      type="button"
+                      onClick={() => setUploadOpen(true)}
+                      className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border bg-surface hover:bg-backgroundMuted transition-colors"
+                    >
+                      <Plus className="h-4 w-4 text-textTertiary" />
+                      <span className="text-[10px] text-textTertiary font-semibold">Add Slide</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </FieldCard>
+          )}
         </div>
       </div>
 
-      <MediaUploadDropzone open={uploadOpen} onOpenChange={setUploadOpen} brandId={project.brand} onUploaded={handleUploadedAsset} />
+      <MediaUploadDropzone open={uploadOpen} onOpenChange={setUploadOpen} brandId={project.brand} onUploaded={handleUploadedAssets} />
 
       {/* Surface a prior failed publish (e.g. a background scheduled publish
           that failed) so the reason is visible when revisiting the project,

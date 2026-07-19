@@ -29,4 +29,6 @@ export interface InstagramMockProps extends InstagramPreviewContent {
   /** Applies the restrained success-cue box-shadow glow pulse (300ms in / 500ms out) to the phone frame. */
   glow?: boolean;
   className?: string;
+  activeSlideIndex?: number;
+  onActiveSlideIndexChange?: (index: number) => void;
 }

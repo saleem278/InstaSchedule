@@ -35,3 +35,13 @@
     font-family: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
   }
 }
+
+@layer utilities {
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

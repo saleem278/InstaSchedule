@@ -25,7 +25,7 @@ export function composeCaption(content: ProjectDocument['content']): string {
 }
 
 export interface PublishOutcome {
-  project: ProjectDocument;
+  project: any;
   mediaId: string;
   permalink?: string;
   provider: string;

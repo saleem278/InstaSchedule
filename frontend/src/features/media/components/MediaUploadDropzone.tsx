@@ -19,7 +19,7 @@ interface MediaUploadDropzoneProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   brandId?: string;
-  onUploaded?: (asset: any) => void;
+  onUploaded?: (assets: any[]) => void;
 }
 
 interface QueuedFile {
@@ -71,7 +71,8 @@ export function MediaUploadDropzone({ open, onOpenChange, brandId, onUploaded }:
     setQueue((prev) => prev.filter((_, i) => i !== index));
   };
 
-      const startUpload = async (): Promise<void> => {
+  const startUpload = async (): Promise<void> => {
+    const uploadedAssets: any[] = [];
     for (let i = 0; i < queue.length; i += 1) {
       if (queue[i]!.status !== 'pending') continue;
       updateItem(i, { status: 'uploading', progress: 0 });
@@ -82,10 +83,13 @@ export function MediaUploadDropzone({ open, onOpenChange, brandId, onUploaded }:
           onProgress: (percent) => updateItem(i, { progress: percent }),
         });
         updateItem(i, { status: 'done', progress: 100 });
-        if (onUploaded) onUploaded(asset);
+        uploadedAssets.push(asset);
       } catch {
         updateItem(i, { status: 'error' });
       }
+    }
+    if (uploadedAssets.length > 0 && onUploaded) {
+      onUploaded(uploadedAssets);
     }
   };
 
